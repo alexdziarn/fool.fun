@@ -9,7 +9,7 @@ type Mutation {
     incrementMultiple: Float!
   ): Coin
 
-  createAccount(wallet: String!): Account
+  createAccount(userName: String!, wallet: String!): Account
 
-  createReply(accountId: ID!, coinId: ID!, comment: String!): Reply
+  createReply(accountId: ID!, coinId: ID!, comment: String!, time: String!): Reply
 }

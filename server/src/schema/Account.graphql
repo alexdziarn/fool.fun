@@ -1,7 +1,8 @@
 type Account {
   id: ID!
-  wallet: String!
+  userName: String!
+  walletAddress: String!
   coinsCreated: [Coin!]!
-  replies: [Reply!]!
   coinsOwned: [Coin!]!
+  replies: [Reply!]!
 }

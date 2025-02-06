@@ -5,6 +5,7 @@ type Coin {
   description: String!
   picture: String!
   currentPrice: Float!
-  owner: String!
+  currentOwner: String!
   incrementMultiple: Float!
+  transactions: [Transaction!]!
 }

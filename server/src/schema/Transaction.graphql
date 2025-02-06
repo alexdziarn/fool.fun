@@ -1,0 +1,7 @@
+type Transaction {
+  id: ID!
+  type: String! # sell, transfer, created
+  from: String!
+  to: String!
+  time: String! # ISO 8601 format
+}

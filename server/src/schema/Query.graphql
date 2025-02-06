@@ -2,4 +2,5 @@ type Query {
   getCoin(id: ID!): Coin
   getAccount(id: ID!): Account
   getReply(id: ID!): Reply
+  getTransaction(id: ID!): Transaction
 }
