@@ -1,2 +1,2 @@
 # fool.fun
-creating a new token standard revolving around the greater fools theory
+creating a new token standard revolved around the greater fools theory
