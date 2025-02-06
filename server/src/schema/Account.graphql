@@ -1,0 +1,7 @@
+type Account {
+  id: ID!
+  wallet: String!
+  coinsCreated: [Coin!]!
+  replies: [Reply!]!
+  coinsOwned: [Coin!]!
+}

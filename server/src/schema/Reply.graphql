@@ -1,0 +1,6 @@
+type Reply {
+  id: ID!
+  account: Account!
+  coin: Coin!
+  comment: String!
+}

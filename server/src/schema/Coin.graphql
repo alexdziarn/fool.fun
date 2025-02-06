@@ -1,0 +1,10 @@
+type Coin {
+  id: ID!
+  name: String!
+  ticker: String!
+  description: String!
+  picture: String!
+  currentPrice: Float!
+  owner: String!
+  incrementMultiple: Float!
+}

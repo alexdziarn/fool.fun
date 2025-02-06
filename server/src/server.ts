@@ -1,70 +1,39 @@
 // src/server.ts
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
+import { Account } from './resolvers/account';
+import { Coin } from './resolvers/coin';
+import { Mutation } from './resolvers/mutations';
+import { Query } from './resolvers/queries';
+import { Reply } from './resolvers/reply';
+import { readFileSync } from "fs";
+import { join } from "path";
 
 // Define your GraphQL schema
-const typeDefs = `#graphql
-  type Coin {
-    id: ID!
-    name: String!
-    ticker: String!
-    description: String!
-    picture: String!
-    currentPrice: Float!
-    owner: String!
-    incrementMultiple: Float!
-  }
-
-  type Account {
-    id: ID!
-    wallet: String!
-    coinsCreated: [Coin!]!
-    replies: [Reply!]!
-    coinsOwned: [Coin!]!
-  }
-
-  type Reply {
-    id: ID!
-    account: Account!
-    coin: Coin!
-    comment: String!
-  }
-
-  type Query {
-    getCoin(id: ID!): Coin
-    getAccount(id: ID!): Account
-    getReply(id: ID!): Reply
-  }
-
-  type Mutation {
-    createCoin(
-      name: String!
-      ticker: String!
-      description: String!
-      picture: String!
-      currentPrice: Float!
-      owner: String!
-      incrementMultiple: Float!
-    ): Coin
-
-    createAccount(wallet: String!): Account
-
-    createReply(accountId: ID!, coinId: ID!, comment: String!): Reply
-  }
-`;
+const coinTypeDefs = readFileSync(join(__dirname, "Coin.graphql"), "utf-8");
+const accountTypeDefs = readFileSync(join(__dirname, "Account.graphql"), "utf-8");
+const replyTypeDefs = readFileSync(join(__dirname, "Reply.graphql"), "utf-8");
+const queryTypeDefs = readFileSync(join(__dirname, "Query.graphql"), "utf-8");
+const mutationTypeDefs = readFileSync(join(__dirname, "Mutation.graphql"), "utf-8");
+const typeDefs = [
+  coinTypeDefs,
+  accountTypeDefs,
+  replyTypeDefs,
+  queryTypeDefs,
+  mutationTypeDefs,
+];
 
 // Define resolvers
 const resolvers = {
-  Query: {
-    hello: () => 'Hello, world!',
-  },
+  Account,
+  Coin,
+  Mutation,
+  Query,
+  Reply
 };
 
 // Create an Apollo Server instance
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-});
+const server = new ApolloServer({ typeDefs, resolvers });
 
 // Start the server
 startStandaloneServer(server, {
