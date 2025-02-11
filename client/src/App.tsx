@@ -5,21 +5,22 @@ import './App.css';
 
 
 // Define a GraphQL query
-const HELLO_QUERY = gql`
-  query Hello {
-    hello
-  }
-`;
+// const HELLO_QUERY = gql`
+//   query Hello {
+//     hello
+//   }
+// `;
 
 function App() {
-  const { loading, error, data } = useQuery(HELLO_QUERY);
+  // const { loading, error, data } = useQuery(HELLO_QUERY);
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p>Error: {error.message}</p>;
+  // if (loading) return <p>Loading...</p>;
+  // if (error) return <p>Error: {error.message}</p>;
 
   return (
     <div>
-      <h1>{data.hello}</h1>
+      {/* <h1>{data.hello}</h1> */}
+      
     </div>
   );
 }
