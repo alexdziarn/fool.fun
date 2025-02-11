@@ -1,27 +1,28 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client'; // Import createRoot
-import { ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
+import ReactDOM from 'react-dom/client';
+import { ApolloClient, InMemoryCache, ApolloProvider, gql } from '@apollo/client';
+import createUploadLink from 'apollo-upload-client/createUploadLink.mjs';
 import App from './App.tsx';
 
-import './index.css';
-// import reportWebVitals from './reportWebVitals';
+const uploadLink = createUploadLink({
+  uri: 'http://localhost:4000/graphql',
+});
 
-// Create an Apollo Client instance
 const client = new ApolloClient({
-  uri: 'http://localhost:4000', // Backend server URL
+  link: uploadLink,
   cache: new InMemoryCache(),
 });
 
-// Wrap the app with ApolloProvider
-const container = document.getElementById('root');
-const root = createRoot(container!);
+client.query({ query: gql`query { hello }` })
+  .then(result => console.log('Connection test:', result))
+  .catch(error => console.error('Connection error:', error));
+
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
+
 root.render(
   <ApolloProvider client={client}>
     <App />
   </ApolloProvider>
 );
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-// reportWebVitals();

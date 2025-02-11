@@ -1,8 +1,0 @@
-type Account {
-  id: ID!
-  userName: String!
-  walletAddress: String!
-  coinsCreated: [Coin!]!
-  coinsOwned: [Coin!]!
-  replies: [Reply!]!
-}

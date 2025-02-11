@@ -1,15 +1,10 @@
 import React from 'react';
 import { useQuery, gql } from '@apollo/client';
+import FileUpload from './components/FileUpload.tsx';
 
 import './App.css';
 
 
-// Define a GraphQL query
-// const HELLO_QUERY = gql`
-//   query Hello {
-//     hello
-//   }
-// `;
 
 function App() {
   // const { loading, error, data } = useQuery(HELLO_QUERY);
@@ -20,7 +15,8 @@ function App() {
   return (
     <div>
       {/* <h1>{data.hello}</h1> */}
-      
+      <h1>File Upload</h1>
+      <FileUpload />
     </div>
   );
 }

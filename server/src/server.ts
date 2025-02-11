@@ -1,73 +1,123 @@
-// src/server.ts
 import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+import { GraphQLError } from 'graphql';
+import GraphQLUpload from 'graphql-upload/GraphQLUpload.mjs';
+import { initializeApp } from 'firebase/app';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { firebaseConfig } from './firebase';
 import express from 'express';
-import { Account } from './resolvers/account';
-import { Coin } from './resolvers/coin';
-import { Mutation } from './resolvers/mutations';
-import { Query } from './resolvers/queries';
-import { Reply } from './resolvers/reply';
-import { readFileSync } from "fs";
-import { join } from "path";
-import { processRequest } from 'graphql-upload';
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getStorage } from 'firebase-admin/storage';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createWriteStream } from 'fs';
-import { finished } from 'stream/promises';
+import cors from 'cors';
+import { expressMiddleware } from '@apollo/server/express4';
+import { json } from 'body-parser';
+import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 
-// Define your GraphQL schema
-const coinTypeDefs = readFileSync(join(__dirname, "Coin.graphql"), "utf-8");
-const accountTypeDefs = readFileSync(join(__dirname, "Account.graphql"), "utf-8");
-const replyTypeDefs = readFileSync(join(__dirname, "Reply.graphql"), "utf-8");
-const queryTypeDefs = readFileSync(join(__dirname, "Query.graphql"), "utf-8");
-const mutationTypeDefs = readFileSync(join(__dirname, "Mutation.graphql"), "utf-8");
-const typeDefs = [
-  coinTypeDefs,
-  accountTypeDefs,
-  replyTypeDefs,
-  queryTypeDefs,
-  mutationTypeDefs,
-];
+const firebaseApp = initializeApp(firebaseConfig);
+const storage = getStorage(firebaseApp);
 
-// Define resolvers
+// Define TypeDefs
+const typeDefs = `#graphql
+  scalar Upload
+
+  type File {
+    url: String!
+  }
+
+  type Query {
+    hello: String
+  }
+
+  type Mutation {
+    uploadFile(file: Upload!): File!
+  }
+`;
+
+// Add this interface at the top of the file
+interface FileUpload {
+  filename: string;
+  mimetype: string;
+  encoding: string;
+  createReadStream: () => NodeJS.ReadableStream;
+}
+
+// Define Resolvers
 const resolvers = {
-  Account,
-  Coin,
-  Mutation,
-  Query,
-  Reply
+  Upload: GraphQLUpload,
+  Query: {
+    hello: () => 'Hello World!'
+  },
+
+  Mutation: {
+    uploadFile: async (_: any, { file }: { file: Promise<FileUpload> }) => {
+      console.log('uploadFile', file);
+      try {
+        const { createReadStream, filename, mimetype } = await file;
+        
+        // Validate file type
+        if (!mimetype.startsWith('image/')) {
+          throw new GraphQLError('Only image files are allowed', {
+            extensions: { code: 'BAD_USER_INPUT' }
+          });
+        }
+
+        // Create unique filename
+        const timestamp = Date.now();
+        const uniqueFilename = `${timestamp}-${filename}`;
+        const storageRef = ref(storage, `uploads/${uniqueFilename}`);
+
+        // Convert stream to buffer
+        const stream = createReadStream();
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(chunk as Buffer);
+        }
+        const buffer = Buffer.concat(chunks);
+
+        // Upload to Firebase
+        await uploadBytes(storageRef, buffer, {
+          contentType: mimetype
+        });
+
+        // Get download URL
+        const url = await getDownloadURL(storageRef);
+        console.log('File uploaded successfully:', url);
+
+        return { url };
+      } catch (error) {
+        console.error('Upload error:', error);
+        throw new GraphQLError('File upload failed', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      }
+    }
+  }
 };
 
-// Create an Apollo Server instance
-const server = new ApolloServer({ typeDefs, resolvers });
-
-// Start the server
-const app = express();
-
-// Enable file uploads
-app.use(async (req, res, next) => {
-  if (req.method === 'POST' && req.headers['content-type']?.startsWith('multipart/form-data')) {
-    try {
-      const request = await processRequest(req, res);
-      req.body = request;
-      next();
-    } catch (error) {
-      console.error('Error processing file upload:', error);
-      res.status(500).send('File upload failed');
-    }
-  } else {
-    next();
-  }
+// Create and start the server
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
 });
 
-async function startServer() {
+const startServer = async () => {
   await server.start();
-  server.applyMiddleware({ app });
-
-  app.listen({ port: 4000 }, () => {
-    console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`);
+  
+  const app = express();
+  app.use(cors());
+  app.use(json());
+  
+  // Add file upload middleware
+  app.use(graphqlUploadExpress());
+  
+  app.use(
+    '/graphql',
+    expressMiddleware(server, {
+      context: async ({ req }) => ({ req })
+    }) as unknown as express.RequestHandler
+  );
+  
+  app.listen(4000, () => {
+    console.log(`🚀 Server ready at http://localhost:4000/graphql`);
   });
-}
+};
 
 startServer();

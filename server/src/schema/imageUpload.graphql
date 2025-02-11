@@ -1,7 +1,0 @@
-scalar Upload
-type Mutation {
-  uploadImage(file: Upload!): ImageResponse
-}
-type ImageResponse {
-  url: String!
-}

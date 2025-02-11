@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "@apollo/client": "^3.12.9",
+    "@types/apollo-upload-client": "^18.0.0",
+    "apollo-upload-client": "^18.0.1",
     "cra-template-typescript": "1.2.0",
     "graphql": "^16.10.0",
     "react": "^19.0.0",

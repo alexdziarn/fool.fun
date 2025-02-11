@@ -1,7 +1,0 @@
-type Reply {
-  id: ID!
-  account: Account!
-  coin: Coin!
-  comment: String!
-  time: String! # ISO 8601 format
-}
