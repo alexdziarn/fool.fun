@@ -10,7 +10,7 @@ const UPLOAD_FILE = gql`
 `;
 
 const FileUpload = () => {
-  const [uploadFile, { loading, error, data }] = useMutation(UPLOAD_FILE);
+  const [uploadFile] = useMutation(UPLOAD_FILE);
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -36,7 +36,6 @@ const FileUpload = () => {
         }
       });
       
-      // Clear preview after successful upload
       setPreview(null);
       setSelectedFile(null);
     } catch (err) {
@@ -53,46 +52,35 @@ const FileUpload = () => {
   }, [preview]);
 
   return (
-    <div>
+    <div className="mt-1 space-y-4">
       <input 
         type="file" 
         accept="image/*"
         onChange={handleFileChange}
-        disabled={loading}
-        value=""
+        className="block w-full text-sm text-slate-500
+          file:mr-4 file:py-2 file:px-4
+          file:rounded-xl file:border-0
+          file:text-sm file:font-medium
+          file:bg-gradient-to-r file:from-indigo-50 file:to-cyan-50
+          file:text-indigo-700
+          hover:file:bg-gradient-to-r hover:file:from-indigo-100 hover:file:to-cyan-100
+          transition-all cursor-pointer"
       />
       {preview && (
-        <div style={{ marginTop: '20px' }}>
+        <div className="space-y-4">
           <img 
             src={preview} 
             alt="Preview" 
-            style={{ maxWidth: '200px', marginBottom: '10px' }} 
+            className="max-w-xs rounded-xl shadow-lg ring-1 ring-slate-200" 
           />
-          <br />
           <button 
-            onClick={handleUpload} 
-            disabled={loading}
+            onClick={handleUpload}
+            className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 
+              to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 transform 
+              hover:scale-105 transition-all shadow-lg hover:shadow-indigo-500/25"
           >
-            {loading ? 'Uploading...' : 'Confirm Upload'}
+            Confirm Upload
           </button>
-        </div>
-      )}
-      {error && (
-        <p style={{ color: 'red', marginTop: '10px' }}>
-          Upload failed: {error.message}
-        </p>
-      )}
-      {data?.uploadFile?.url && (
-        <div style={{ marginTop: '10px' }}>
-          <p style={{ color: 'green' }}>✓ Upload successful!</p>
-          <a 
-            href={data.uploadFile.url} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            style={{ color: '#0066cc' }}
-          >
-            View uploaded image
-          </a>
         </div>
       )}
     </div>

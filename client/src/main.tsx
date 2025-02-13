@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ApolloClient, InMemoryCache, ApolloProvider, gql } from '@apollo/client';
 import createUploadLink from 'apollo-upload-client/createUploadLink.mjs';
-import App from './App.tsx';
+import App from './App';
 
 const uploadLink = createUploadLink({
   uri: 'http://localhost:4000/graphql',

@@ -1,22 +1,15 @@
 import React from 'react';
-import { useQuery, gql } from '@apollo/client';
-import FileUpload from './components/FileUpload.tsx';
-
-import './App.css';
-
-
+import CreateToken from './components/CreateToken';
 
 function App() {
-  // const { loading, error, data } = useQuery(HELLO_QUERY);
-
-  // if (loading) return <p>Loading...</p>;
-  // if (error) return <p>Error: {error.message}</p>;
-
   return (
-    <div>
-      {/* <h1>{data.hello}</h1> */}
-      <h1>File Upload</h1>
-      <FileUpload />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 mb-8">
+          Fool.fun
+        </h1>
+        <CreateToken />
+      </div>
     </div>
   );
 }
