@@ -10,10 +10,12 @@ interface TokenFormData {
 
 const CreateToken = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [formData, setFormData] = useState<TokenFormData>({
     name: '',
     ticker: '',
-    description: ''
+    description: '',
+    imageUrl: ''
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -24,96 +26,97 @@ const CreateToken = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileSelect = (file: File) => {
+    setFileToUpload(file);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
-    // TODO: Add mutation to create token
+    
+    if (!fileToUpload) {
+      alert('Please select an image first');
+      return;
+    }
+
+    // TODO: Handle file upload here
+    console.log('Form submitted:', formData, 'File:', fileToUpload);
+    
+    // Reset form data
+    setFormData({
+      name: '',
+      ticker: '',
+      description: '',
+      imageUrl: ''
+    });
+    setFileToUpload(null);
     setIsOpen(false);
   };
 
   return (
     <div>
       {!isOpen ? (
-        <button 
-          onClick={() => setIsOpen(true)}
-          className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-cyan-500 text-white rounded-xl 
-            hover:from-indigo-600 hover:to-cyan-600 transform hover:scale-105 transition-all 
-            shadow-lg hover:shadow-indigo-500/25"
-        >
+        <button className="bg-blue-500 text-white px-4 py-2 rounded-md cursor-pointer" onClick={() => setIsOpen(true)}>
           Create New Token
         </button>
       ) : (
-        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-8 w-full max-w-2xl shadow-xl">
-            <h2 className="text-3xl font-bold text-slate-800 mb-8">Create New Token</h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <div>
+            <h2>Create New Token</h2>
+            <form onSubmit={handleSubmit}>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label>
                   Name
                   <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm 
-                      focus:border-indigo-500 focus:ring-indigo-500 hover:border-indigo-400 transition-colors"
                     required
+                    className="w-full bg-gray-100 border border-gray-300 rounded p-2 mt-1 text-black"
                   />
                 </label>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label>
                   Ticker
                   <input
                     type="text"
                     name="ticker"
                     value={formData.ticker}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm 
-                      focus:border-indigo-500 focus:ring-indigo-500 hover:border-indigo-400 transition-colors"
                     required
+                    className="w-full bg-gray-100 border border-gray-300 rounded p-2 mt-1 text-black"
                   />
                 </label>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label>
                   Description
                   <textarea
                     name="description"
                     value={formData.description}
                     onChange={handleInputChange}
                     rows={4}
-                    className="mt-1 block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm 
-                      focus:border-indigo-500 focus:ring-indigo-500 hover:border-indigo-400 transition-colors"
                     required
+                    className="w-full bg-gray-100 border border-gray-300 rounded p-2 mt-1 text-black"
                   />
                 </label>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label>
                   Token Image
-                  <FileUpload />
+                  <FileUpload onFileSelect={handleFileSelect} />
                 </label>
               </div>
 
-              <div className="flex justify-end space-x-4">
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-xl 
-                    hover:bg-slate-200 transition-colors"
-                >
+              <div>
+                <button type="button" onClick={() => setIsOpen(false)}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 
-                    to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 transform 
-                    hover:scale-105 transition-all shadow-lg hover:shadow-indigo-500/25"
-                >
+                <button type="submit">
                   Create Token
                 </button>
               </div>

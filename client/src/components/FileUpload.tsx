@@ -1,46 +1,19 @@
 import React, { useState } from 'react';
-import { gql, useMutation } from '@apollo/client';
 
-const UPLOAD_FILE = gql`
-  mutation UploadFile($file: Upload!) {
-    uploadFile(file: $file) {
-      url
-    }
-  }
-`;
+interface FileUploadProps {
+  onFileSelect: (file: File) => void;
+}
 
-const FileUpload = () => {
-  const [uploadFile] = useMutation(UPLOAD_FILE);
+const FileUpload = ({ onFileSelect }: FileUploadProps) => {
   const [preview, setPreview] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setSelectedFile(file);
+    onFileSelect(file);
     const previewUrl = URL.createObjectURL(file);
     setPreview(previewUrl);
-  };
-
-  const handleUpload = async () => {
-    if (!selectedFile) return;
-
-    try {
-      const { data } = await uploadFile({
-        variables: { file: selectedFile },
-        context: {
-          headers: {
-            'Apollo-Require-Preflight': 'true',
-          }
-        }
-      });
-      
-      setPreview(null);
-      setSelectedFile(null);
-    } catch (err) {
-      console.error('Upload failed:', err);
-    }
   };
 
   React.useEffect(() => {
@@ -73,14 +46,6 @@ const FileUpload = () => {
             alt="Preview" 
             className="max-w-xs rounded-xl shadow-lg ring-1 ring-slate-200" 
           />
-          <button 
-            onClick={handleUpload}
-            className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 
-              to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 transform 
-              hover:scale-105 transition-all shadow-lg hover:shadow-indigo-500/25"
-          >
-            Confirm Upload
-          </button>
         </div>
       )}
     </div>
