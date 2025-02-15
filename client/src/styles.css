@@ -1,1 +1,25 @@
+@import '@solana/wallet-adapter-react-ui/styles.css';
 @import "tailwindcss";
+
+
+.wallet-adapter-button {
+  @apply font-medium hover:bg-indigo-400 text-white px-4 py-2 rounded-md;
+}
+
+.wallet-adapter-modal-container {
+  @apply z-50;
+}
+
+.wallet-adapter-modal-wrapper {
+  @apply rounded-xl;
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors;
+  }
+  
+  .card {
+    @apply p-6 bg-white rounded-lg shadow-md;
+  }
+}

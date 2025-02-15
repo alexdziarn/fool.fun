@@ -55,7 +55,11 @@ const CreateToken = () => {
   return (
     <div>
       {!isOpen ? (
-        <button className="bg-blue-500 text-white px-4 py-2 rounded-md cursor-pointer" onClick={() => setIsOpen(true)}>
+        <button
+          type="button"
+        className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          onClick={() => setIsOpen(true)}
+        >
           Create New Token
         </button>
       ) : (
@@ -113,10 +117,16 @@ const CreateToken = () => {
               </div>
 
               <div>
-                <button type="button" onClick={() => setIsOpen(false)}>
+                <button
+                  type="button"
+                  className="m-5 rounded-sm bg-white px-2 py-1 text-xs font-semibold text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset hover:bg-gray-50"
+                  onClick={() => setIsOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit">
+                <button 
+                  type="submit"
+                  className="m-5 rounded-sm bg-indigo-600 px-2 py-1 text-xs font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
                   Create Token
                 </button>
               </div>
