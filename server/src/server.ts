@@ -1,5 +1,4 @@
 import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
 import { GraphQLError } from 'graphql';
 import GraphQLUpload from 'graphql-upload/GraphQLUpload.mjs';
 import { initializeApp } from 'firebase/app';
@@ -10,6 +9,9 @@ import cors from 'cors';
 import { expressMiddleware } from '@apollo/server/express4';
 import { json } from 'body-parser';
 import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
+import { PublicKey } from '@solana/web3.js';
+import bs58 from 'bs58';
+import nacl from 'tweetnacl';
 
 const firebaseApp = initializeApp(firebaseConfig);
 const storage = getStorage(firebaseApp);
@@ -26,8 +28,17 @@ const typeDefs = `#graphql
     hello: String
   }
 
+  type AuthResponse {
+    success: Boolean!
+  }
+
   type Mutation {
     uploadFile(file: Upload!): File!
+    verifySignature(
+      publicKey: String!
+      signature: String!
+      message: String!
+    ): AuthResponse!
   }
 `;
 
@@ -87,6 +98,31 @@ const resolvers = {
         throw new GraphQLError('File upload failed', {
           extensions: { code: 'INTERNAL_SERVER_ERROR' }
         });
+      }
+    },
+    verifySignature: async (_: any, { publicKey, signature, message }: { 
+      publicKey: string, 
+      signature: string, 
+      message: string 
+    }) => {
+      try {
+        const pubKey = new PublicKey(publicKey);
+        const signatureUint8 = bs58.decode(signature);
+        const messageUint8 = new TextEncoder().encode(message);
+        
+        const verified = nacl.sign.detached.verify(
+          messageUint8,
+          signatureUint8,
+          pubKey.toBytes()
+        );
+
+        console.log(`🔑 Wallet ${verified ? 'verified' : 'failed'}: ${publicKey}`);
+        
+        return { success: verified };
+      } catch (error) {
+        console.error('❌ Signature verification failed:', error);
+        console.error('Failed wallet:', publicKey);
+        return { success: false };
       }
     }
   }
