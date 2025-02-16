@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
 import FileUpload from './FileUpload';
 
+const UPLOAD_FILE = gql`
+  mutation UploadFile($file: Upload!) {
+    uploadFile(file: $file) {
+      url
+    }
+  }
+`;
+
 interface TokenFormData {
   name: string;
   ticker: string;
@@ -9,6 +17,7 @@ interface TokenFormData {
 }
 
 const CreateToken = () => {
+  const [uploadFile] = useMutation(UPLOAD_FILE);
   const [isOpen, setIsOpen] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [formData, setFormData] = useState<TokenFormData>({
@@ -38,8 +47,24 @@ const CreateToken = () => {
       return;
     }
 
-    // TODO: Handle file upload here
-    console.log('Form submitted:', formData, 'File:', fileToUpload);
+    try {
+      console.log('Uploading file...');
+      const { data } = await uploadFile({
+        variables: { file: fileToUpload },
+        context: {
+          headers: {
+            'Apollo-Require-Preflight': 'true',
+          }
+        }
+      });
+
+      if (data?.uploadFile?.url) {
+        console.log('Upload successful:', data.uploadFile.url);
+        // TODO: Create token with form data and image URL
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+    }
     
     // Reset form data
     setFormData({
