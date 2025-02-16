@@ -12,6 +12,7 @@ import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
+import { uploadToPinata } from './pinata';
 
 const firebaseApp = initializeApp(firebaseConfig);
 const storage = getStorage(firebaseApp);
@@ -70,11 +71,6 @@ const resolvers = {
           });
         }
 
-        // Create unique filename
-        const timestamp = Date.now();
-        const uniqueFilename = `${timestamp}-${filename}`;
-        const storageRef = ref(storage, `uploads/${uniqueFilename}`);
-
         // Convert stream to buffer
         const stream = createReadStream();
         const chunks: Buffer[] = [];
@@ -83,14 +79,10 @@ const resolvers = {
         }
         const buffer = Buffer.concat(chunks);
 
-        // Upload to Firebase
-        await uploadBytes(storageRef, buffer, {
-          contentType: mimetype
-        });
-
-        // Get download URL
-        const url = await getDownloadURL(storageRef);
-        console.log('File uploaded successfully:', url);
+        // Upload to Pinata
+        console.log('Uploading file to Pinata...');
+        const url = await uploadToPinata(buffer, filename);
+        console.log('File uploaded successfully to IPFS:', url);
 
         return { url };
       } catch (error) {
