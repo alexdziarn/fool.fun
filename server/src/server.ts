@@ -2,8 +2,8 @@ import { ApolloServer } from '@apollo/server';
 import { GraphQLError } from 'graphql';
 import GraphQLUpload from 'graphql-upload/GraphQLUpload.mjs';
 import { initializeApp } from 'firebase/app';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { firebaseConfig } from './firebase';
+// import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+// import { firebaseConfig } from './firebase';
 import express from 'express';
 import cors from 'cors';
 import { expressMiddleware } from '@apollo/server/express4';
@@ -14,8 +14,8 @@ import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { uploadToPinata } from './pinata';
 
-const firebaseApp = initializeApp(firebaseConfig);
-const storage = getStorage(firebaseApp);
+// const firebaseApp = initializeApp(firebaseConfig);
+// const storage = getStorage(firebaseApp);
 
 // Define TypeDefs
 const typeDefs = `#graphql

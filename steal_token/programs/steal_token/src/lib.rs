@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 
-declare_id!("your_program_id");
+declare_id!("9P9GUVz1EMfe3KF6NKgM7kMGkuETKGLei7yHmoETD9gN");
 
 // Constants
 pub const MIN_INITIAL_PRICE: u64 = 100_000_000;   // 0.1 SOL
 pub const MAX_INITIAL_PRICE: u64 = 1_000_000_000; // 1 SOL
-pub const DEV_ADDRESS: &str = "your_dev_wallet_address_here";
+pub const DEV_ADDRESS: &str = "9P9GUVz1EMfe3KF6NKgM7kMGkuETKGLei7yHmoETD9gN";
 
 #[program]
 pub mod steal_token {
@@ -29,8 +29,9 @@ pub mod steal_token {
             initial_price >= MIN_INITIAL_PRICE && initial_price <= MAX_INITIAL_PRICE,
             ErrorCode::InvalidInitialPrice
         );
+        let dev_pubkey = Pubkey::try_from(DEV_ADDRESS).map_err(|_| ErrorCode::InvalidDevAddress)?;
         require!(
-            ctx.accounts.dev.key() == Pubkey::from_str(DEV_ADDRESS).unwrap(),
+            ctx.accounts.dev.key() == dev_pubkey,
             ErrorCode::InvalidDevAddress
         );
 
@@ -188,22 +189,18 @@ pub struct Initialize<'info> {
         payer = minter,
         space = CustomToken::MAXIMUM_SIZE,
         seeds = [b"token", minter.key().as_ref(), name.as_bytes()],
-        bump = bump,
+        bump,
     )]
     pub token: Account<'info, CustomToken>,
     
     #[account(mut)]
     pub minter: Signer<'info>,
     
-    #[account(
-        constraint = dev.key() == Pubkey::from_str(DEV_ADDRESS).unwrap()
-    )]
-    /// CHECK: Dev address verified by constraint
+    /// CHECK: Dev address verified in instruction
     pub dev: UncheckedAccount<'info>,
     
     pub system_program: Program<'info, System>,
 }
-
 #[derive(Accounts)]
 pub struct Steal<'info> {
     #[account(mut)]
@@ -221,7 +218,7 @@ pub struct Steal<'info> {
     
     #[account(
         mut,
-        constraint = dev.key() == Pubkey::from_str(DEV_ADDRESS).unwrap()
+        constraint = dev.key() == Pubkey::try_from(DEV_ADDRESS).unwrap()
     )]
     /// CHECK: Dev address verified by constraint
     pub dev: UncheckedAccount<'info>,
