@@ -1,7 +1,7 @@
 @import '@solana/wallet-adapter-react-ui/styles.css';
 @import "tailwindcss";
 
-
+/* 
 .wallet-adapter-button {
   @apply font-medium hover:bg-indigo-400 text-white px-4 py-2 rounded-md;
 }
@@ -22,4 +22,4 @@
   .card {
     @apply p-6 bg-white rounded-lg shadow-md;
   }
-}
+} */
