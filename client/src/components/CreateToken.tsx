@@ -13,10 +13,7 @@ import {
   LAMPORTS_PER_SOL
 } from '@solana/web3.js';
 import { IDL } from '../idl/steal_token';
-
-// TODO: Move this to a config file
-export const PROGRAM_ID = new PublicKey("EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP");
-const DEV_WALLET = new PublicKey("8BcW6T4Sm3tMtE9LJET1oU1vQec6m9R8LifnauQwshCi");
+import { PROGRAM_ID, DEV_WALLET } from '../config/constants';
 
 const UPLOAD_FILE = gql`
   mutation UploadFile($file: Upload!) {
@@ -26,13 +23,21 @@ const UPLOAD_FILE = gql`
   }
 `;
 
-interface TokenFormData {
+interface CreateTokenForm {
   name: string;
   ticker: string;
   description: string;
   imageUrl?: string;
   initialPrice: number;
+  priceIncrement: number;
 }
+
+const serializeString = (str: string): Buffer => {
+  const strBuffer = Buffer.from(str);
+  const lenBuffer = Buffer.alloc(4);
+  lenBuffer.writeUInt32LE(strBuffer.length);
+  return Buffer.concat([lenBuffer, strBuffer]);
+};
 
 async function checkTokenExists(
   connection: Connection,
@@ -46,17 +51,24 @@ async function checkTokenExists(
   }
 }
 
+const serializeU64 = (value: bigint): Buffer => {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(value);
+  return buffer;
+};
+
 const CreateToken = () => {
   const { publicKey, sendTransaction } = useWallet();
   const [uploadFile] = useMutation(UPLOAD_FILE);
   const [isOpen, setIsOpen] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
-  const [formData, setFormData] = useState<TokenFormData>({
+  const [formData, setFormData] = useState<CreateTokenForm>({
     name: '',
     ticker: '',
     description: '',
     imageUrl: '',
-    initialPrice: 0.1
+    initialPrice: 0.1,
+    priceIncrement: 12000,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({
@@ -82,6 +94,8 @@ const CreateToken = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!publicKey) return;
+    setIsLoading(true);
     setErrors({ name: '', ticker: '', description: '', image: '', initialPrice: '', general: '' });
     
     // Validate fields
@@ -110,7 +124,6 @@ const CreateToken = () => {
       return;
     }
 
-    setIsLoading(true);
     try {
       // First upload image
       console.log('Uploading file...');
@@ -133,16 +146,12 @@ const CreateToken = () => {
 
       const connection = new Connection(clusterApiUrl('devnet'));
 
-      // Create instruction data with Borsh-like serialization
-      const nameBuffer = Buffer.from(formData.name);
-      const symbolBuffer = Buffer.from(formData.ticker);
-      const descBuffer = Buffer.from(formData.description);
-      const imageBuffer = Buffer.from(data.uploadFile.url);
       const priceBuffer = Buffer.alloc(8);
+      priceBuffer.writeBigUInt64LE(BigInt(Math.floor(formData.initialPrice * LAMPORTS_PER_SOL)));
 
-      // Fix the price conversion
-      const lamports = Math.floor(formData.initialPrice * LAMPORTS_PER_SOL);
-      priceBuffer.writeBigInt64LE(BigInt(lamports));  // Changed from writeBigUInt64LE
+      // Create price increment buffer correctly
+      const priceIncrementBuffer = Buffer.alloc(8);  // Use 8 bytes for u64
+      priceIncrementBuffer.writeBigUInt64LE(BigInt(formData.priceIncrement));
 
       const [tokenPDA, bump] = PublicKey.findProgramAddressSync(
         [
@@ -159,46 +168,27 @@ const CreateToken = () => {
         return;
       }
 
-      const instructionData = Buffer.concat([
-        Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]), // initialize discriminator
-        
-        // name: string (u32 length + bytes)
-        Buffer.from(new Uint32Array([nameBuffer.length]).buffer),
-        nameBuffer,
-        
-        // symbol: string (u32 length + bytes)
-        Buffer.from(new Uint32Array([symbolBuffer.length]).buffer),
-        symbolBuffer,
-        
-        // description: string (u32 length + bytes)
-        Buffer.from(new Uint32Array([descBuffer.length]).buffer),
-        descBuffer,
-        
-        // image: string (u32 length + bytes)
-        Buffer.from(new Uint32Array([imageBuffer.length]).buffer),
-        imageBuffer,
-        
-        // initial_price: u64
-        priceBuffer,
-        
-        // bump: u8
-        Buffer.from([bump])
-      ]);
-
       const instruction = new TransactionInstruction({
         keys: [
           { pubkey: tokenPDA, isSigner: false, isWritable: true },
           { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: DEV_WALLET, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+          { pubkey: new PublicKey(DEV_WALLET), isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
-        data: instructionData
+        data: Buffer.from([
+          ...Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]),  // correct initialize discriminator
+          ...serializeString(formData.name),
+          ...serializeString(formData.ticker),
+          ...serializeString(formData.description),
+          ...serializeString(data.uploadFile.url || ''),
+          ...serializeU64(BigInt(Math.floor(formData.initialPrice * LAMPORTS_PER_SOL))),
+          ...serializeU64(BigInt(formData.priceIncrement)),
+          ...Buffer.from([bump]),  // Use the actual bump
+        ])
       });
 
       try {
-        if (!publicKey) throw new Error("Wallet not connected!");
-
         const latestBlockhash = await connection.getLatestBlockhash('confirmed');
         
         const transaction = new Transaction();
@@ -224,7 +214,14 @@ const CreateToken = () => {
         if (confirmation.value.err) throw new Error('Transaction failed');
 
         console.log('Token created! Signature:', signature);
-        setFormData({ name: '', ticker: '', description: '', imageUrl: '', initialPrice: 0.1 });
+        setFormData({
+          name: '',
+          ticker: '',
+          description: '',
+          imageUrl: '',
+          initialPrice: 0.1,
+          priceIncrement: 12000,
+        });
         setFileToUpload(null);
         setIsOpen(false);
       } catch (error: any) {
@@ -315,6 +312,28 @@ const CreateToken = () => {
                 </label>
                 <small className="text-gray-400">
                   Price must be between 0.1 and 1 SOL
+                </small>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">
+                  Price Increment (1.2x - 2.0x)
+                </label>
+                <input
+                  type="number"
+                  min={1.2}
+                  max={2.0}
+                  step={0.1}
+                  value={formData.priceIncrement / 10000}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    priceIncrement: Math.floor(Number(e.target.value) * 10000)
+                  })}
+                  className="w-full p-2 bg-gray-700 rounded"
+                  required
+                />
+                <small className="text-gray-400">
+                  Each steal will increase the price by this multiplier
                 </small>
               </div>
 
