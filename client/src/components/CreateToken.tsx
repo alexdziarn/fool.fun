@@ -14,7 +14,8 @@ import {
 } from '@solana/web3.js';
 import { IDL } from '../idl/steal_token';
 
-const PROGRAM_ID = new PublicKey("EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP");
+// TODO: Move this to a config file
+export const PROGRAM_ID = new PublicKey("EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP");
 const DEV_WALLET = new PublicKey("8BcW6T4Sm3tMtE9LJET1oU1vQec6m9R8LifnauQwshCi");
 
 const UPLOAD_FILE = gql`
