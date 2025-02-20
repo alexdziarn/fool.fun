@@ -7,6 +7,8 @@ declare_id!("EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP");
 pub const MIN_INITIAL_PRICE: u64 = 100_000_000;   // 0.1 SOL
 pub const MAX_INITIAL_PRICE: u64 = 1_000_000_000; // 1 SOL
 pub const DEV_ADDRESS: &str = "8BcW6T4Sm3tMtE9LJET1oU1vQec6m9R8LifnauQwshCi";
+pub const MIN_PRICE_MULTIPLIER: u64 = 12000; // 1.2 in basis points (1.2 * 10000)
+pub const MAX_PRICE_MULTIPLIER: u64 = 20000; // 2.0 in basis points (2.0 * 10000)
 
 #[program]
 pub mod steal_token {
@@ -19,8 +21,19 @@ pub mod steal_token {
         description: String,
         image: String,
         initial_price: u64,
+        price_increment: u64,
         bump: u8,
     ) -> Result<()> {
+        let event = InitializeEvent {
+            token: ctx.accounts.token.key(),
+            minter: ctx.accounts.minter.key(),
+            dev: ctx.accounts.dev.key(),
+            initial_price,
+            initial_next_price: initial_price + (initial_price / 5),
+        };
+
+        let token = &mut ctx.accounts.token;
+        
         require!(name.len() <= 32, ErrorCode::NameTooLong);
         require!(symbol.len() <= 8, ErrorCode::SymbolTooLong);
         require!(description.len() <= 200, ErrorCode::DescriptionTooLong);
@@ -29,120 +42,119 @@ pub mod steal_token {
             initial_price >= MIN_INITIAL_PRICE && initial_price <= MAX_INITIAL_PRICE,
             ErrorCode::InvalidInitialPrice
         );
+        require!(
+            price_increment >= MIN_PRICE_MULTIPLIER && price_increment <= MAX_PRICE_MULTIPLIER,
+            ErrorCode::InvalidPriceIncrement
+        );
         let dev_pubkey = Pubkey::try_from(DEV_ADDRESS).map_err(|_| ErrorCode::InvalidDevAddress)?;
         require!(
             ctx.accounts.dev.key() == dev_pubkey,
             ErrorCode::InvalidDevAddress
         );
 
-        ctx.accounts.token.initialize(
-            name,
-            symbol,
-            description,
-            image,
-            ctx.accounts.minter.key(),
-            ctx.accounts.dev.key(),
-            initial_price,
-            bump,
-        )?;
+        token.name = name;
+        token.symbol = symbol;
+        token.description = description;
+        token.image = image;
+        token.current_holder = ctx.accounts.minter.key();
+        token.minter = ctx.accounts.minter.key();
+        token.dev = ctx.accounts.dev.key();
+        token.current_price = initial_price;
+        token.price_increment = price_increment;
+        token.next_price = initial_price
+            .checked_mul(price_increment)
+            .ok_or(ErrorCode::NumericalOverflow)?
+            .checked_div(10000)
+            .ok_or(ErrorCode::NumericalOverflow)?;
+        token.bump = bump;
+        token.first_steal_completed = false;
+        token.previous_price = 0;
 
-        emit!(InitializeEvent {
-            token: ctx.accounts.token.key(),
-            minter: ctx.accounts.minter.key(),
-            dev: ctx.accounts.dev.key(),
-            initial_price,
-            initial_next_price: ctx.accounts.token.next_price,
-        });
-
+        emit!(event);
         Ok(())
     }
 
-    pub fn steal(ctx: Context<Steal>) -> Result<()> {
-        let token = &mut ctx.accounts.token;
-        let stealer = &ctx.accounts.stealer;
-        
-        // Verify payment amount
-        let amount_sent = ctx.accounts.vault.lamports();
+    pub fn steal(ctx: Context<Steal>, amount: u64) -> Result<()> {
+        // Verify payment amount is sufficient
         require!(
-            amount_sent >= token.current_price,
+            amount >= ctx.accounts.token.current_price,
             ErrorCode::InsufficientPayment
         );
 
-        // Process steal and get calculations
-        let calc = token.process_steal(stealer.key())?;
+        // Process the steal first to get fee calculations
+        let calc = ctx.accounts.token.process_steal(ctx.accounts.stealer.key())?;
 
-        // Transfer dev fee
+        // Calculate total cost (holder payment + fees)
+        let total_cost = calc.holder_payment
+            .checked_add(calc.dev_fee)
+            .ok_or(ErrorCode::NumericalOverflow)?
+            .checked_add(calc.minter_fee)
+            .ok_or(ErrorCode::NumericalOverflow)?;
+
+        // Calculate refund if overpaid
+        let refund_amount = if amount > total_cost {
+            amount.checked_sub(total_cost).ok_or(ErrorCode::NumericalOverflow)?
+        } else {
+            0
+        };
+
+        // Transfer to holder
+        let holder_cpi_context = CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            system_program::Transfer {
+                from: ctx.accounts.stealer.to_account_info(),
+                to: ctx.accounts.current_holder.to_account_info(),
+            },
+        );
+        system_program::transfer(holder_cpi_context, calc.holder_payment)?;
+
+        // Transfer fees
         if calc.dev_fee > 0 {
-            system_program::transfer(
-                CpiContext::new(
-                    ctx.accounts.system_program.to_account_info(),
-                    system_program::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: ctx.accounts.dev.to_account_info(),
-                    },
-                ),
-                calc.dev_fee,
-            )?;
+            let dev_cpi_context = CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.stealer.to_account_info(),
+                    to: ctx.accounts.dev.to_account_info(),
+                },
+            );
+            system_program::transfer(dev_cpi_context, calc.dev_fee)?;
         }
 
-        // Transfer minter fee
         if calc.minter_fee > 0 {
-            system_program::transfer(
-                CpiContext::new(
-                    ctx.accounts.system_program.to_account_info(),
-                    system_program::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: ctx.accounts.minter.to_account_info(),
-                    },
-                ),
-                calc.minter_fee,
-            )?;
+            let minter_cpi_context = CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.stealer.to_account_info(),
+                    to: ctx.accounts.minter.to_account_info(),
+                },
+            );
+            system_program::transfer(minter_cpi_context, calc.minter_fee)?;
         }
 
-        // Transfer to previous holder (only after first steal)
-        if calc.holder_payment > 0 {
-            system_program::transfer(
-                CpiContext::new(
-                    ctx.accounts.system_program.to_account_info(),
-                    system_program::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: ctx.accounts.current_holder.to_account_info(),
-                    },
-                ),
-                calc.holder_payment,
-            )?;
-        }
-
-        // Process refund if necessary
-        let refund_amount = amount_sent
-            .checked_sub(token.current_price)
-            .unwrap_or(0);
-
+        // Process refund if any
         if refund_amount > 0 {
-            system_program::transfer(
-                CpiContext::new(
-                    ctx.accounts.system_program.to_account_info(),
-                    system_program::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: stealer.to_account_info(),
-                    },
-                ),
-                refund_amount,
-            )?;
+            let refund_context = CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.stealer.to_account_info(),
+                    to: ctx.accounts.stealer.to_account_info(),
+                },
+            );
+            system_program::transfer(refund_context, refund_amount)?;
         }
 
         emit!(StealEvent {
-            token: token.key(),
-            previous_holder: calc.previous_holder,
-            new_holder: stealer.key(),
-            price_paid: token.current_price,
-            price_increase: calc.price_increase,
+            token: ctx.accounts.token.key(),
+            previous_holder: ctx.accounts.current_holder.key(),
+            new_holder: ctx.accounts.stealer.key(),
+            price_paid: amount,
+            price_increase: ctx.accounts.token.current_price - ctx.accounts.token.previous_price,
             dev_fee: calc.dev_fee,
             minter_fee: calc.minter_fee,
-            is_first_steal: calc.is_first_steal,
+            is_first_steal: !ctx.accounts.token.first_steal_completed,
             holder_payment: calc.holder_payment,
             refund_amount,
-            next_price: calc.new_next_price,
+            next_price: ctx.accounts.token.next_price,
         });
 
         Ok(())
@@ -201,6 +213,7 @@ pub struct Initialize<'info> {
     
     pub system_program: Program<'info, System>,
 }
+
 #[derive(Accounts)]
 pub struct Steal<'info> {
     #[account(mut)]
@@ -229,10 +242,6 @@ pub struct Steal<'info> {
     )]
     /// CHECK: Minter address verified by constraint
     pub minter: UncheckedAccount<'info>,
-    
-    #[account(mut)]
-    /// CHECK: Temporary vault for payment processing
-    pub vault: UncheckedAccount<'info>,
     
     pub system_program: Program<'info, System>,
 }
@@ -287,48 +296,18 @@ impl CustomToken {
         8 +                                // previous_price
         100;                               // padding for safety
 
-    pub fn initialize(
-        &mut self,
-        name: String,
-        symbol: String,
-        description: String,
-        image: String,
-        minter: Pubkey,
-        dev: Pubkey,
-        initial_price: u64,
-        bump: u8,
-    ) -> Result<()> {
-        self.name = name;
-        self.symbol = symbol;
-        self.description = description;
-        self.image = image;
-        self.current_holder = minter;
-        self.minter = minter;
-        self.dev = dev;
-        self.current_price = initial_price;
-        self.next_price = self.calculate_next_price()?;
-        self.previous_price = 0;
-        self.price_increment = 12000;      // 1.2x
-        self.bump = bump;
-        self.first_steal_completed = false;
-        Ok(())
-    }
-
     pub fn calculate_next_price(&self) -> Result<u64> {
-        Ok(self
-            .current_price
+        // Calculate price increase using price_increment (stored in basis points)
+        let increase = self.current_price
             .checked_mul(self.price_increment)
             .ok_or(ErrorCode::NumericalOverflow)?
-            .checked_div(10000)
-            .ok_or(ErrorCode::NumericalOverflow)?)
+            .checked_div(10000)  // Convert from basis points
+            .ok_or(ErrorCode::NumericalOverflow)?;
+        
+        Ok(increase)  // Return the new price directly
     }
 
     pub fn process_steal(&mut self, stealer: Pubkey) -> Result<StealCalculation> {
-        // Calculate price increase
-        let price_increase = self.current_price
-            .checked_sub(self.previous_price)
-            .ok_or(ErrorCode::NumericalOverflow)?;
-
         let (dev_fee, minter_fee, holder_payment) = if !self.first_steal_completed {
             // First steal: Entire amount split 50/50 between dev and minter
             let half_amount = self.current_price
@@ -337,8 +316,8 @@ impl CustomToken {
             
             (half_amount, half_amount, 0u64)
         } else {
-            // Subsequent steals: Normal 10% fee split 80/20
-            let total_fee = price_increase
+            // Calculate fees based on current price, not price increase
+            let total_fee = self.current_price
                 .checked_mul(1000) // 10% = 1000 basis points
                 .ok_or(ErrorCode::NumericalOverflow)?
                 .checked_div(10000)
@@ -357,50 +336,36 @@ impl CustomToken {
                 .checked_div(100)
                 .ok_or(ErrorCode::NumericalOverflow)?;
 
-            // Calculate holder payment
-            let holder_payment = self.previous_price
-                .checked_add(
-                    price_increase
-                        .checked_sub(total_fee)
-                        .ok_or(ErrorCode::NumericalOverflow)?
-                )
+            // Holder gets the current price minus fees
+            let holder_payment = self.current_price
+                .checked_sub(total_fee)
                 .ok_or(ErrorCode::NumericalOverflow)?;
 
             (dev_fee, minter_fee, holder_payment)
         };
 
-        // Update token state
-        let old_holder = self.current_holder;
+        // Update prices
         self.previous_price = self.current_price;
         self.current_price = self.next_price;
         self.next_price = self.calculate_next_price()?;
         self.current_holder = stealer;
         
-        // Mark first steal as completed
         if !self.first_steal_completed {
             self.first_steal_completed = true;
         }
 
         Ok(StealCalculation {
-            previous_holder: old_holder,
-            price_increase,
             dev_fee,
             minter_fee,
             holder_payment,
-            new_next_price: self.next_price,
-            is_first_steal: !self.first_steal_completed,
         })
     }
 }
 
 pub struct StealCalculation {
-    pub previous_holder: Pubkey,
-    pub price_increase: u64,
     pub dev_fee: u64,
     pub minter_fee: u64,
     pub holder_payment: u64,
-    pub new_next_price: u64,
-    pub is_first_steal: bool,
 }
 
 #[event]
@@ -456,4 +421,6 @@ pub enum ErrorCode {
     InvalidDevAddress,
     #[msg("Only the current holder can transfer the token")]
     NotCurrentHolder,
+    #[msg("Price increment must be between 12000 and 20000 (1.2x to 2.0x)")]
+    InvalidPriceIncrement,
 }
