@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { signMessage } from '../services/auth.service';
+import { saveAuth, checkAuth, clearAuth } from '../utils/auth';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -14,6 +15,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const wallet = useWallet();
 
+  // Check auth status on mount
+  useEffect(() => {
+    const isValid = checkAuth();
+    setIsAuthenticated(isValid);
+  }, []);
+
   const login = useCallback(async () => {
     if (!wallet.publicKey || !wallet.signMessage) return;
 
@@ -24,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const success = await signMessage(wallet.publicKey.toString(), signature, message);
       
       if (success) {
+        saveAuth(wallet.publicKey.toString());
         setIsAuthenticated(true);
         console.log('Login successful');
       }
@@ -33,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [wallet]);
 
   const logout = useCallback(() => {
+    clearAuth();
     setIsAuthenticated(false);
   }, []);
 
