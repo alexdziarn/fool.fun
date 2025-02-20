@@ -1,5 +1,5 @@
 export const IDL = {
-  "address": "FesSNkUMZv5faqXuwXGqmDedin46bXkzmfPzNYx17T8k",
+  "address": "EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP",
   "metadata": {
     "name": "steal_token",
     "version": "0.1.0",

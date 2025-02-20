@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 
-declare_id!("9P9GUVz1EMfe3KF6NKgM7kMGkuETKGLei7yHmoETD9gN");
+declare_id!("EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP");
 
 // Constants
 pub const MIN_INITIAL_PRICE: u64 = 100_000_000;   // 0.1 SOL
 pub const MAX_INITIAL_PRICE: u64 = 1_000_000_000; // 1 SOL
-pub const DEV_ADDRESS: &str = "9P9GUVz1EMfe3KF6NKgM7kMGkuETKGLei7yHmoETD9gN";
+pub const DEV_ADDRESS: &str = "8BcW6T4Sm3tMtE9LJET1oU1vQec6m9R8LifnauQwshCi";
 
 #[program]
 pub mod steal_token {
@@ -272,19 +272,20 @@ pub struct CustomToken {
 
 impl CustomToken {
     pub const MAXIMUM_SIZE: usize = 8 +    // discriminator
-        32 +                               // name
-        8 +                                // symbol
-        200 +                             // description
-        200 +                             // image
-        32 +                              // current_holder
-        32 +                              // minter
-        32 +                              // dev
-        8 +                               // current_price
-        8 +                               // next_price
-        8 +                               // price_increment
-        1 +                               // bump
-        1 +                               // first_steal_completed
-        8;                                // previous_price
+        4 + 32 +                           // name (string prefix + max chars)
+        4 + 8 +                            // symbol (string prefix + max chars)
+        4 + 200 +                          // description (string prefix + max chars)
+        4 + 200 +                          // image url (string prefix + max chars)
+        32 +                               // current_holder
+        32 +                               // minter
+        32 +                               // dev
+        8 +                                // current_price
+        8 +                                // next_price
+        8 +                                // price_increment
+        1 +                                // bump
+        1 +                                // first_steal_completed
+        8 +                                // previous_price
+        100;                               // padding for safety
 
     pub fn initialize(
         &mut self,

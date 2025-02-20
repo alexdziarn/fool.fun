@@ -9,12 +9,13 @@ import {
   Transaction, 
   SystemProgram,
   TransactionInstruction,
-  clusterApiUrl
+  clusterApiUrl,
+  LAMPORTS_PER_SOL
 } from '@solana/web3.js';
 import { IDL } from '../idl/steal_token';
 
-const PROGRAM_ID = new PublicKey("FesSNkUMZv5faqXuwXGqmDedin46bXkzmfPzNYx17T8k");
-const DEV_WALLET = new PublicKey("9P9GUVz1EMfe3KF6NKgM7kMGkuETKGLei7yHmoETD9gN");
+const PROGRAM_ID = new PublicKey("EaDhVtTXRSJrzGNkLGYsA5cQWFPwEYh1vAjF4yh7hUBP");
+const DEV_WALLET = new PublicKey("8BcW6T4Sm3tMtE9LJET1oU1vQec6m9R8LifnauQwshCi");
 
 const UPLOAD_FILE = gql`
   mutation UploadFile($file: Upload!) {
@@ -32,6 +33,18 @@ interface TokenFormData {
   initialPrice: number;
 }
 
+async function checkTokenExists(
+  connection: Connection,
+  tokenPDA: PublicKey
+): Promise<boolean> {
+  try {
+    const accountInfo = await connection.getAccountInfo(tokenPDA);
+    return accountInfo !== null;
+  } catch (error) {
+    return false;
+  }
+}
+
 const CreateToken = () => {
   const { publicKey, sendTransaction } = useWallet();
   const [uploadFile] = useMutation(UPLOAD_FILE);
@@ -43,6 +56,15 @@ const CreateToken = () => {
     description: '',
     imageUrl: '',
     initialPrice: 0.1
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({
+    name: '',
+    ticker: '',
+    description: '',
+    image: '',
+    initialPrice: '',
+    general: ''
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -59,12 +81,35 @@ const CreateToken = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrors({ name: '', ticker: '', description: '', image: '', initialPrice: '', general: '' });
     
-    if (!fileToUpload || !publicKey) {
-      alert('Please connect wallet and select an image');
+    // Validate fields
+    if (formData.name.length > 32) {
+      setErrors(prev => ({ ...prev, name: 'Name must be 32 characters or less' }));
       return;
     }
 
+    if (formData.ticker.length > 8) {
+      setErrors(prev => ({ ...prev, ticker: 'Symbol must be 8 characters or less' }));
+      return;
+    }
+
+    if (formData.description.length > 200) {
+      setErrors(prev => ({ ...prev, description: 'Description must be 200 characters or less' }));
+      return;
+    }
+
+    if (!fileToUpload || !publicKey) {
+      setErrors(prev => ({ ...prev, image: 'Please connect wallet and select an image' }));
+      return;
+    }
+
+    if (formData.initialPrice < 0.1 || formData.initialPrice > 1) {
+      setErrors(prev => ({ ...prev, initialPrice: 'Initial price must be between 0.1 and 1 SOL' }));
+      return;
+    }
+
+    setIsLoading(true);
     try {
       // First upload image
       console.log('Uploading file...');
@@ -87,29 +132,18 @@ const CreateToken = () => {
 
       const connection = new Connection(clusterApiUrl('devnet'));
 
-      // Create instruction data
+      // Create instruction data with Borsh-like serialization
       const nameBuffer = Buffer.from(formData.name);
       const symbolBuffer = Buffer.from(formData.ticker);
       const descBuffer = Buffer.from(formData.description);
       const imageBuffer = Buffer.from(data.uploadFile.url);
       const priceBuffer = Buffer.alloc(8);
-      priceBuffer.writeBigUInt64LE(BigInt(formData.initialPrice * 1_000_000_000));
 
-      const instructionData = Buffer.concat([
-        Buffer.from([0]), // instruction index for 'initialize'
-        Buffer.from([nameBuffer.length]),
-        nameBuffer,
-        Buffer.from([symbolBuffer.length]),
-        symbolBuffer,
-        Buffer.from([descBuffer.length]),
-        descBuffer,
-        Buffer.from([imageBuffer.length]),
-        imageBuffer,
-        priceBuffer
-      ]);
+      // Fix the price conversion
+      const lamports = Math.floor(formData.initialPrice * LAMPORTS_PER_SOL);
+      priceBuffer.writeBigInt64LE(BigInt(lamports));  // Changed from writeBigUInt64LE
 
-      // Calculate PDA
-      const [tokenPDA] = PublicKey.findProgramAddressSync(
+      const [tokenPDA, bump] = PublicKey.findProgramAddressSync(
         [
           Buffer.from('token'),
           publicKey.toBuffer(),
@@ -117,6 +151,38 @@ const CreateToken = () => {
         ],
         PROGRAM_ID
       );
+
+      const exists = await checkTokenExists(connection, tokenPDA);
+      if (exists) {
+        alert('A token with this name already exists for your wallet. Please choose a different name.');
+        return;
+      }
+
+      const instructionData = Buffer.concat([
+        Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]), // initialize discriminator
+        
+        // name: string (u32 length + bytes)
+        Buffer.from(new Uint32Array([nameBuffer.length]).buffer),
+        nameBuffer,
+        
+        // symbol: string (u32 length + bytes)
+        Buffer.from(new Uint32Array([symbolBuffer.length]).buffer),
+        symbolBuffer,
+        
+        // description: string (u32 length + bytes)
+        Buffer.from(new Uint32Array([descBuffer.length]).buffer),
+        descBuffer,
+        
+        // image: string (u32 length + bytes)
+        Buffer.from(new Uint32Array([imageBuffer.length]).buffer),
+        imageBuffer,
+        
+        // initial_price: u64
+        priceBuffer,
+        
+        // bump: u8
+        Buffer.from([bump])
+      ]);
 
       const instruction = new TransactionInstruction({
         keys: [
@@ -129,29 +195,46 @@ const CreateToken = () => {
         data: instructionData
       });
 
-      const transaction = new Transaction().add(instruction);
-      const signature = await sendTransaction(transaction, connection);
-      
-      await connection.confirmTransaction({
-        signature,
-        blockhash: transaction.recentBlockhash,
-        lastValidBlockHeight: transaction.lastValidBlockHeight
-      });
-      console.log('Token created! Signature:', signature);
+      try {
+        if (!publicKey) throw new Error("Wallet not connected!");
 
-      // Reset form
-      setFormData({
-        name: '',
-        ticker: '',
-        description: '',
-        imageUrl: '',
-        initialPrice: 0.1
-      });
-      setFileToUpload(null);
-      setIsOpen(false);
+        const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+        
+        const transaction = new Transaction();
+        transaction.add(instruction);
+        transaction.recentBlockhash = latestBlockhash.blockhash;
+        transaction.feePayer = publicKey;
 
-    } catch (error) {
+        console.log('Simulating transaction...');
+        const simulation = await connection.simulateTransaction(transaction);
+        
+        if (simulation.value.err) {
+          console.error('Simulation error:', simulation.value.logs);
+          throw new Error(`Simulation failed: ${simulation.value.err.toString()}`);
+        }
+
+        console.log('Simulation successful:', simulation.value.logs);
+
+        // Simplified transaction sending
+        const signature = await sendTransaction(transaction, connection);
+        console.log("Transaction sent:", signature);
+
+        const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+        if (confirmation.value.err) throw new Error('Transaction failed');
+
+        console.log('Token created! Signature:', signature);
+        setFormData({ name: '', ticker: '', description: '', imageUrl: '', initialPrice: 0.1 });
+        setFileToUpload(null);
+        setIsOpen(false);
+      } catch (error: any) {
+        console.error('Transaction validation failed:', error);
+        alert(`Invalid transaction: ${error.message}`);
+      }
+    } catch (error: any) {
       console.error('Error creating token:', error);
+      alert('Failed to create token: ' + error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -179,9 +262,10 @@ const CreateToken = () => {
                     value={formData.name}
                     onChange={handleInputChange}
                     required
-                    className="w-full bg-gray-100 border border-gray-300 rounded p-2 mt-1 text-black"
+                    className={`w-full bg-gray-100 border ${errors.name ? 'border-red-500' : 'border-gray-300'} rounded p-2 mt-1 text-black`}
                   />
                 </label>
+                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
               </div>
               
               <div>
@@ -193,9 +277,10 @@ const CreateToken = () => {
                     value={formData.ticker}
                     onChange={handleInputChange}
                     required
-                    className="w-full bg-gray-100 border border-gray-300 rounded p-2 mt-1 text-black"
+                    className={`w-full bg-gray-100 border ${errors.ticker ? 'border-red-500' : 'border-gray-300'} rounded p-2 mt-1 text-black`}
                   />
                 </label>
+                {errors.ticker && <p className="text-red-500 text-sm mt-1">{errors.ticker}</p>}
               </div>
               
               <div>
@@ -248,13 +333,29 @@ const CreateToken = () => {
                 </button>
                 <button 
                   type="submit"
+                  disabled={isLoading}
                   className="m-5 rounded-sm bg-indigo-600 px-2 py-1 text-xs font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
                 >
-                  Create Token
+                  {isLoading ? (
+                    <div className="flex items-center">
+                      <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Creating...
+                    </div>
+                  ) : (
+                    'Create Token'
+                  )}
                 </button>
               </div>
             </form>
           </div>
+          {errors.general && (
+            <div className="mt-4">
+              <p className="text-red-500 text-sm">{errors.general}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
