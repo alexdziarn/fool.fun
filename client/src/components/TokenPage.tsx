@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery } from '@apollo/client';
+import { gql } from '@apollo/client';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { 
   PublicKey, 
-  Transaction, 
+  Transaction as SolanaTransaction,
   SystemProgram, 
   LAMPORTS_PER_SOL,
   Connection, 
@@ -11,22 +13,38 @@ import {
 } from '@solana/web3.js';
 import { PROGRAM_ID, DEV_WALLET } from '../config/constants';
 
+const GET_TOKEN = gql`
+  query GetToken($id: ID!) {
+    token(id: $id) {
+      id
+      name
+      symbol
+      description
+      image
+      currentHolder
+      minter
+      currentPrice
+      nextPrice
+      createdAt
+      transactions {
+        signature
+        type
+        timestamp
+        from
+        to
+        amount
+      }
+    }
+  }
+`;
+
 interface TokenPageProps {
-  token: {
-    name: string;
-    symbol: string;
-    description: string;
-    image: string;
-    currentHolder: string;
-    minter: string;
-    currentPrice: number;
-    nextPrice: number;
-  };
+  tokenId: string;
   onBack: () => void;
-  onUpdate: () => void;
+  onViewProfile: (address: string) => void;
 }
 
-interface TransactionHistory {
+interface TokenTransaction {
   signature: string;
   type: 'steal' | 'transfer';
   timestamp: number;
@@ -35,32 +53,37 @@ interface TransactionHistory {
   amount?: number;
 }
 
-export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
+export const TokenPage = ({ tokenId, onBack, onViewProfile }: TokenPageProps) => {
   const { publicKey, sendTransaction } = useWallet();
-  const isOwner = publicKey?.toBase58() === token.currentHolder;
-  const [stealAmount, setStealAmount] = useState(token.currentPrice);
+  const { loading, error, data, refetch } = useQuery(GET_TOKEN, {
+    variables: { id: tokenId }
+  });
+  const [stealAmount, setStealAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferAddress, setTransferAddress] = useState('');
   const [transferError, setTransferError] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
-  const [transactions, setTransactions] = useState<TransactionHistory[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  if (loading) return <div>Loading token...</div>;
+  if (error) return <div>Error loading token: {error.message}</div>;
+  if (!data?.token) return <div>Token not found</div>;
+
+  const token = data.token;
+  console.log('Token data:', token);
+  console.log('Transactions:', token.transactions);
+  const isOwner = publicKey?.toBase58() === token.currentHolder;
 
   const handleSteal = async () => {
     if (!publicKey) return;
-    setError('');
+    setErrorMsg('');
     setIsLoading(true);
 
     try {
       const connection = new Connection(clusterApiUrl('devnet'));
       
-      // Add logging for amount being sent
-      console.log('Sending amount:', stealAmount, 'SOL');
-      console.log('Current price:', token.currentPrice, 'SOL');
-
-      // Check wallet balance using stealAmount
+      // Check wallet balance
       const balance = await connection.getBalance(publicKey);
       const requiredBalance = stealAmount * LAMPORTS_PER_SOL + 0.001 * LAMPORTS_PER_SOL;
       
@@ -77,75 +100,36 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
         PROGRAM_ID
       );
 
-      // Create instruction data with amount
+      // Create steal instruction
       const amountBuffer = Buffer.alloc(8);
-      console.log("stealAmount", stealAmount);
       const amountInLamports = BigInt(Math.floor(stealAmount * LAMPORTS_PER_SOL));
       amountBuffer.writeBigUInt64LE(amountInLamports);
 
-      const instructionData = Buffer.concat([
-        Buffer.from([106, 222, 218, 118, 8, 131, 144, 221]), // steal discriminator
-        amountBuffer // steal amount in lamports
-      ]);
-
       const instruction = new TransactionInstruction({
         keys: [
-          { pubkey: tokenPDA, isSigner: false, isWritable: true },          // token
-          { pubkey: publicKey, isSigner: true, isWritable: true },          // stealer
-          { pubkey: new PublicKey(token.currentHolder), isSigner: false, isWritable: true }, // current_holder
-          { pubkey: new PublicKey(DEV_WALLET), isSigner: false, isWritable: true }, // dev
-          { pubkey: new PublicKey(token.minter), isSigner: false, isWritable: true }, // minter
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false } // system_program
+          { pubkey: tokenPDA, isSigner: false, isWritable: true },
+          { pubkey: publicKey, isSigner: true, isWritable: true },
+          { pubkey: new PublicKey(token.currentHolder), isSigner: false, isWritable: true },
+          { pubkey: new PublicKey(DEV_WALLET), isSigner: false, isWritable: true },
+          { pubkey: new PublicKey(token.minter), isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
         ],
         programId: PROGRAM_ID,
-        data: instructionData  // Use the instruction data with amount
+        data: Buffer.concat([
+          Buffer.from([106, 222, 218, 118, 8, 131, 144, 221]), // steal discriminator
+          amountBuffer
+        ])
       });
 
-      const transaction = new Transaction();
-      transaction.add(instruction);
-
-      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      transaction.feePayer = publicKey;
-
-      // Simulate transaction
-      console.log('Simulating transaction...');
-      const simulation = await connection.simulateTransaction(transaction);
-      
-      if (simulation.value.err) {
-        console.error('Simulation error:', simulation.value.logs);
-        throw new Error(`Simulation failed: ${simulation.value.err.toString()}`);
-      }
-
-      // Log simulation results
-      console.log('Simulation successful. Logs:', simulation.value.logs);
-
-      // Execute transaction
+      const transaction = new SolanaTransaction().add(instruction);
       const signature = await sendTransaction(transaction, connection);
-      console.log("Transaction sent:", signature);
+      await connection.confirmTransaction(signature);
 
-      // Wait for confirmation and get transaction details
-      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-      const txDetails = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0 });
-      
-      if (txDetails) {
-        console.log('Transaction details:', txDetails);
-        // Look for refund in transaction details
-        const postBalances = txDetails.meta?.postBalances;
-        const preBalances = txDetails.meta?.preBalances;
-        if (postBalances && preBalances) {
-          const balanceChange = (postBalances[1] - preBalances[1]) / LAMPORTS_PER_SOL;
-          console.log('Balance change:', balanceChange, 'SOL');
-        }
-      }
-
-      console.log('Token stolen successfully!');
-      onUpdate();
+      refetch();
       onBack();
     } catch (err: any) {
       console.error('Failed to steal token:', err);
-      setError(err.message || 'Failed to steal token. Please try again.');
-      onUpdate();
+      setErrorMsg(err.message || 'Failed to steal token');
     } finally {
       setIsLoading(false);
     }
@@ -180,7 +164,7 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
         data: Buffer.from([163, 52, 200, 231, 140, 3, 69, 186]) // transfer discriminator
       });
 
-      const transaction = new Transaction();
+      const transaction = new SolanaTransaction();
       transaction.add(instruction);
 
       const connection = new Connection(clusterApiUrl('devnet'));
@@ -193,7 +177,6 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
 
       console.log('Token transferred successfully!');
       setShowTransferModal(false);
-      onUpdate();
       onBack();
     } catch (err: any) {
       console.error('Failed to transfer token:', err);
@@ -203,103 +186,9 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
     }
   };
 
-  const fetchTransactionHistory = async () => {
-    if (!publicKey) return;
-    
-    try {
-      setLoadingHistory(true);
-      const connection = new Connection(clusterApiUrl('devnet'));
-      
-      const [tokenPDA] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('token'),
-          new PublicKey(token.minter).toBuffer(),
-          Buffer.from(token.name)
-        ],
-        PROGRAM_ID
-      );
-
-      const signatures = await connection.getSignaturesForAddress(tokenPDA);
-      
-      const history = await Promise.all(
-        signatures.map(async (sig) => {
-          const tx = await connection.getTransaction(sig.signature, {
-            maxSupportedTransactionVersion: 0
-          });
-          
-          if (!tx?.meta?.logMessages) return null;
-
-          const logs = tx.meta.logMessages;
-          console.log('All logs:', logs);
-
-          const isSteal = logs.some(log => log.includes('Instruction: Steal'));
-          const isTransfer = logs.some(log => log.includes('Instruction: Transfer'));
-          
-          if (!isSteal && !isTransfer) return null;
-
-          // Get the accounts involved in the transaction
-          const accountKeys = tx.transaction.message.accountKeys;
-          console.log('Account keys:', accountKeys);
-
-          let txInfo: TransactionHistory = {
-            signature: sig.signature,
-            timestamp: sig.blockTime || 0,
-            type: isSteal ? 'steal' : 'transfer',
-            from: '',
-            to: '',
-            amount: isSteal ? (tx.meta.preBalances[1] - tx.meta.postBalances[1]) / LAMPORTS_PER_SOL : undefined
-          };
-
-          if (isSteal) {
-            // For steal instruction, the accounts are:
-            // 0: token PDA
-            // 1: stealer (new holder)
-            // 2: current holder (previous holder)
-            txInfo.from = accountKeys[1].toString(); // current holder
-            txInfo.to = accountKeys[0].toString();   // stealer
-          } else if (isTransfer) {
-            // For transfer instruction, the accounts are:
-            // 0: token PDA
-            // 1: current holder (sender)
-            // 2: recipient
-
-            console.log("trasfer");
-            for (let i = 0; i < accountKeys.length; i++) {
-              console.log("accountKeys", accountKeys[i].toString());
-            }
-            txInfo.from = accountKeys[0].toString(); // sender
-            txInfo.to = accountKeys[3].toString();   // recipient
-          }
-
-          console.log('Transaction info:', txInfo);
-          return txInfo;
-        })
-      );
-
-      setTransactions(history.filter((tx): tx is TransactionHistory => tx !== null));
-    } catch (error) {
-      console.error('Error fetching transaction history:', error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTransactionHistory();
-  }, [token.name, token.minter]);
-
   const formatAddress = (address: string) => {
     return address;
   };
-
-  // Add polling for updates while on token page
-  useEffect(() => {
-    const interval = setInterval(() => {
-      onUpdate();
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [onUpdate]);
 
   const TransferModal = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
@@ -369,9 +258,12 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
             </div>
             <div className="flex justify-between">
               <span>Current Holder:</span>
-              <span className="font-mono">
-                {token.currentHolder.slice(0, 4)}...{token.currentHolder.slice(-4)}
-              </span>
+              <button
+                onClick={() => onViewProfile(token.currentHolder)}
+                className="font-mono hover:text-purple-400 transition-colors"
+              >
+                {formatAddress(token.currentHolder)}
+              </button>
             </div>
           </div>
 
@@ -393,7 +285,7 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
               Transaction requires an additional ~0.001 SOL for fees
             </p>
             
-            {error && <p className="text-red-500 text-sm">{error}</p>}
+            {errorMsg && <p className="text-red-500 text-sm">{errorMsg}</p>}
             
             <button 
               className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-gray-600"
@@ -431,18 +323,11 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
 
       <div className="mt-8">
         <h2 className="text-xl font-bold mb-4">Transaction History</h2>
-        {loadingHistory ? (
-          <div className="flex justify-center p-4">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-          </div>
-        ) : transactions.length === 0 ? (
+        {data.token.transactions.length === 0 ? (
           <p className="text-gray-400">No transaction history available</p>
         ) : (
           <div className="space-y-2">
-            {transactions.map((tx) => (
+            {data.token.transactions.map((tx: TokenTransaction) => (
               <div 
                 key={tx.signature} 
                 className="bg-gray-700 p-4 rounded-lg"
@@ -469,7 +354,7 @@ export const TokenPage = ({ token, onBack, onUpdate }: TokenPageProps) => {
                   {tx.amount !== undefined && (
                     <div className="flex justify-between">
                       <span className="text-gray-400">Amount:</span>
-                      <span>{(tx.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
+                      <span>{tx.amount.toFixed(2)} SOL</span>
                     </div>
                   )}
                 </div>

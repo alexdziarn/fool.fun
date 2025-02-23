@@ -29,6 +29,14 @@ export const checkAuth = (): boolean => {
   return true;
 };
 
+export const getStoredWallet = (): string | null => {
+  const authData = localStorage.getItem(AUTH_KEY);
+  if (!authData) return null;
+
+  const { publicKey }: AuthData = JSON.parse(authData);
+  return publicKey;
+};
+
 export const clearAuth = () => {
   localStorage.removeItem(AUTH_KEY);
 }; 

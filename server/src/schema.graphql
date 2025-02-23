@@ -1,0 +1,28 @@
+type Token {
+  id: ID!
+  name: String!
+  symbol: String!
+  description: String!
+  image: String!
+  currentHolder: String!
+  minter: String!
+  currentPrice: Float!
+  nextPrice: Float!
+  createdAt: Int!
+  transactions: [Transaction!]!
+}
+
+type Transaction {
+  signature: String!
+  type: String!
+  timestamp: Int!
+  from: String!
+  to: String!
+  amount: Float
+}
+
+type Query {
+  tokens: [Token!]!
+  token(id: ID!): Token
+  userTokens(address: String!): [Token!]!
+} 

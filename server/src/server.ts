@@ -13,6 +13,9 @@ import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { uploadToPinata } from './pinata';
+import { Connection, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PROGRAM_ID } from './config/constants';
+import NodeCache from 'node-cache';
 
 // const firebaseApp = initializeApp(firebaseConfig);
 // const storage = getStorage(firebaseApp);
@@ -25,9 +28,34 @@ const typeDefs = `#graphql
     url: String!
   }
 
-  type Query {
-    hello: String
+  type Token {
+    id: ID!
+    name: String!
+    symbol: String!
+    description: String!
+    image: String!
+    currentHolder: String!
+    minter: String!
+    currentPrice: Float!
+    nextPrice: Float!
+    createdAt: Int!
+    transactions: [Transaction!]!
   }
+
+  type Transaction {
+    signature: String!
+    type: String!
+    timestamp: Int!
+    from: String!
+    to: String!
+    amount: Float
+  }
+
+  type Query {
+    tokens: [Token!]!
+    token(id: ID!): Token
+    userTokens(address: String!): [Token!]!
+  } 
 
   type AuthResponse {
     success: Boolean!
@@ -51,11 +79,210 @@ interface FileUpload {
   createReadStream: () => NodeJS.ReadableStream;
 }
 
+interface Token {
+  id: string;
+  name: string;
+  symbol: string;
+  description: string;
+  image: string;
+  currentHolder: string;
+  minter: string;
+  currentPrice: number;
+  nextPrice: number;
+  createdAt: number;
+  transactions: Transaction[];
+}
+
+interface Transaction {
+  signature: string;
+  type: 'steal' | 'transfer';
+  timestamp: number;
+  from: string;
+  to: string;
+  amount?: number;
+}
+
+const tokenCache = new NodeCache({ stdTTL: 60 }); // Cache for 60 seconds
+
+async function parseTransactions(signatures: any[], connection: Connection): Promise<Transaction[]> {
+  const transactions = await Promise.all(
+    signatures.map(async (sig) => {
+      try {
+        const tx = await connection.getTransaction(sig.signature, {
+          maxSupportedTransactionVersion: 0,
+          commitment: 'confirmed'
+        });
+        if (!tx) return null;
+
+        const accountKeys = tx.transaction.message.staticAccountKeys;
+        if (!accountKeys || accountKeys.length < 3) return null;
+        console.log('Account keys:', accountKeys.length);
+
+        // Check program ID to filter program transactions
+        const programIdIndex = tx.transaction.message.compiledInstructions[0].programIdIndex;
+        const programId = accountKeys[programIdIndex].toString();
+        
+        if (programId !== PROGRAM_ID.toString()) return null;
+
+        // Determine type by account layout
+        const isSteal = accountKeys.length === 6; // Steal has 6 accounts
+        const isTransfer = accountKeys.length === 4; // Transfer has 4 accounts
+
+        console.log('Transaction data:', {
+          programId,
+          accountCount: accountKeys.length,
+          isSteal,
+          isTransfer
+        });
+
+        if (!isSteal && !isTransfer) return null;
+
+        const result: Transaction = {
+          signature: sig.signature,
+          type: isSteal ? 'steal' : 'transfer',
+          timestamp: sig.blockTime || 0,
+          from: isSteal ? accountKeys[2].toString() : accountKeys[1].toString(),
+          to: isSteal ? accountKeys[1].toString() : accountKeys[2].toString(),
+          amount: isSteal && tx.meta ? (tx.meta.postBalances[1] - tx.meta.preBalances[1]) / LAMPORTS_PER_SOL : undefined
+        };
+        return result;
+      } catch (error) {
+        console.error('Error parsing transaction:', error);
+        return null;
+      }
+    })
+  );
+
+  return transactions.filter((tx): tx is Transaction => tx !== null);
+}
+
 // Define Resolvers
 const resolvers = {
   Upload: GraphQLUpload,
   Query: {
-    hello: () => 'Hello World!'
+    tokens: async (): Promise<Token[]> => {
+      try {
+        // Check cache first
+        const cached = tokenCache.get('all_tokens');
+        if (cached) return cached as Token[];
+
+        const connection = new Connection(clusterApiUrl('devnet'));
+        const accounts = await connection.getProgramAccounts(PROGRAM_ID);
+        
+        const tokens = await Promise.all(accounts.map(async ({ pubkey, account }) => {
+          // Parse token data
+          const data = account.data;
+          let offset = 8; // Skip discriminator
+
+          // Helper to read string
+          const readString = () => {
+            const len = data.readUInt32LE(offset);
+            offset += 4;
+            const str = data.slice(offset, offset + len).toString();
+            offset += len;
+            return str;
+          };
+
+          const name = readString();
+          const symbol = readString();
+          const description = readString();
+          const image = readString();
+          const currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
+          offset += 32;
+          const minter = new PublicKey(data.slice(offset, offset + 32)).toString();
+          offset += 64; // skip minter and dev
+
+          const currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+          offset += 8;
+          const nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+
+          // Get creation time
+          const signatures = await connection.getSignaturesForAddress(pubkey, { limit: 1 });
+          
+          return {
+            id: pubkey.toString(),
+            name,
+            symbol,
+            description,
+            image,
+            currentHolder,
+            minter,
+            currentPrice,
+            nextPrice,
+            createdAt: signatures[0]?.blockTime || 0,
+            transactions: [] // We'll fetch these separately when needed
+          };
+        }));
+
+        // Store in cache
+        tokenCache.set('all_tokens', tokens);
+        return tokens;
+      } catch (error) {
+        console.error('Error fetching tokens:', error);
+        throw new Error('Failed to fetch tokens');
+      }
+    },
+
+    token: async (_: any, { id }: { id: string }) => {
+      try {
+        const connection = new Connection(clusterApiUrl('devnet'));
+        const account = await connection.getAccountInfo(new PublicKey(id));
+        if (!account) return null;
+
+        const data = account.data;
+        let offset = 8; // Skip discriminator
+
+        // Helper to read string
+        const readString = () => {
+          const len = data.readUInt32LE(offset);
+          offset += 4;
+          const str = data.slice(offset, offset + len).toString();
+          offset += len;
+          return str;
+        };
+
+        const name = readString();
+        const symbol = readString();
+        const description = readString();
+        const image = readString();
+        const currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
+        offset += 32;
+        const minter = new PublicKey(data.slice(offset, offset + 32)).toString();
+        offset += 64; // skip minter and dev
+
+        const currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+        offset += 8;
+        const nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+
+        // Get transactions
+        const signatures = await connection.getSignaturesForAddress(new PublicKey(id));
+        console.log('Found signatures:', signatures.length);
+        const transactions = await parseTransactions(signatures, connection);
+        console.log('Parsed transactions:', transactions.length);
+
+        return {
+          id,
+          name,
+          symbol,
+          description,
+          image,
+          currentHolder,
+          minter,
+          currentPrice,
+          nextPrice,
+          createdAt: signatures[0]?.blockTime || 0,
+          transactions
+        };
+      } catch (error) {
+        console.error('Error fetching token:', error);
+        throw new Error('Failed to fetch token');
+      }
+    },
+
+    userTokens: async (_: any, { address }: { address: string }): Promise<Token[]> => {
+      const allTokens = await resolvers.Query.tokens();
+      return allTokens.filter(token => token.currentHolder === address);
+    }
   },
 
   Mutation: {

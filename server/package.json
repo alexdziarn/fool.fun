@@ -116,7 +116,8 @@
     "webidl-conversions": "^3.0.1",
     "whatwg-mimetype": "^3.0.0",
     "whatwg-url": "^5.0.0",
-    "yn": "^3.1.1"
+    "yn": "^3.1.1",
+    "node-cache": "^5.1.2"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
