@@ -348,7 +348,6 @@ export const TokenPage = ({ tokenId, onBack, onViewProfile }: TokenPageProps) =>
           console.log('Balance change:', balanceChange, 'SOL');
         }
       }
-
       console.log('Token stolen successfully!');
       onViewProfile(token.currentHolder);
       onBack();
