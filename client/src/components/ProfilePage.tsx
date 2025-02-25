@@ -18,7 +18,11 @@ interface OwnedToken {
   createdAt?: number;
 }
 
-export const ProfilePage = () => {
+export const ProfilePage = ({ walletAddress, onBack, onViewToken }: {
+  walletAddress: string;
+  onBack: () => void;
+  onViewToken: (tokenId: string) => void;
+}) => {
   const { publicKey } = useWallet();
   const [ownedTokens, setOwnedTokens] = useState<OwnedToken[]>([]);
   const [selectedToken, setSelectedToken] = useState<any>(null);
@@ -210,7 +214,7 @@ export const ProfilePage = () => {
               <div 
                 key={token.pubkey} 
                 className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600 transition-all duration-200"
-                onClick={() => setSelectedToken(token)}
+                onClick={() => onViewToken(token.pubkey)}
               >
                 <img src={token.image} alt={token.name} className="w-full h-48 object-cover rounded-lg mb-4" />
                 <h4 className="text-lg font-bold mb-2">{token.name}</h4>
