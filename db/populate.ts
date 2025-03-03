@@ -1,21 +1,21 @@
-import { DynamoDBClient, CreateTableCommand } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { clusterApiUrl, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { Connection } from "@solana/web3.js";
 import { PROGRAM_ID } from "./config/constants";
 import { PublicKey } from '@solana/web3.js';
+import { Pool } from 'pg';
+import * as dotenv from 'dotenv';
 
-// Configure the DynamoDB client to connect to the local instance
-const client = new DynamoDBClient({
-  region: "local-env",
-  endpoint: "http://localhost:8000",
-  credentials: {
-    accessKeyId: "fakeMyKeyId",
-    secretAccessKey: "fakeSecretAccessKey",
-  },
+// Load environment variables
+dotenv.config();
+
+// Configure PostgreSQL connection
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'tokens_db',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres'
 });
-
-const docClient = DynamoDBDocumentClient.from(client);
 
 interface Token {
   name: string;
@@ -31,8 +31,23 @@ interface Token {
   id: string;
 }
 
+// Add this interface to match database column names
+interface DbToken {
+  id: string;
+  name: string;
+  symbol: string;
+  description: string;
+  image: string;
+  current_holder: string;
+  minter: string;
+  current_price: number;
+  next_price: number;
+  pubkey: string;
+  created_at?: Date;
+}
+
 // Define the table name
-const TOKEN_TABLE = "Tokens";
+const TOKEN_TABLE = "tokens";
 
 async function getTokenData() {
   try {
@@ -42,7 +57,7 @@ async function getTokenData() {
     console.log(`Found ${accounts.length} tokens`);
 
     // Sample token data
-    const tokenData:Token[] = accounts.map(({ pubkey, account }) => {
+    const tokenData: Token[] = accounts.map(({ pubkey, account }) => {
       try {
         const data = account.data;
         let offset = 8; // Skip discriminator
@@ -85,67 +100,158 @@ async function getTokenData() {
         console.error(`Error parsing token ${pubkey.toString()}:`, err);
         return null;
       }
-    }).filter(token => token !== null);
+    }).filter(token => token !== null) as Token[];
 
     return tokenData;
   } catch (error) {
-    console.error("Error populating tokens table:", error);
+    console.error("Error getting token data:", error);
+    return [];
   }
-
 }
 
 // Function to create the table if it doesn't exist
 async function createTableIfNotExists() {
+  const client = await pool.connect();
   try {
-    const createTableCommand = new CreateTableCommand({
-      TableName: TOKEN_TABLE,
-      KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
-      AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
-      ProvisionedThroughput: {
-        ReadCapacityUnits: 5,
-        WriteCapacityUnits: 5,
-      },
-    });
-
-    await client.send(createTableCommand);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ${TOKEN_TABLE} (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        description TEXT,
+        image TEXT,
+        current_holder TEXT NOT NULL,
+        minter TEXT NOT NULL,
+        current_price DECIMAL(20, 9) NOT NULL,
+        next_price DECIMAL(20, 9) NOT NULL,
+        pubkey TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create an index on current_price for efficient sorting
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_tokens_current_price ON ${TOKEN_TABLE} (current_price DESC)
+    `);
+    
     console.log(`Table ${TOKEN_TABLE} created successfully`);
   } catch (error) {
-    // If the table already exists, this will throw an error, which we can ignore
-    console.log(`Table ${TOKEN_TABLE} may already exist or there was an error:`, error);
+    console.error("Error creating table:", error);
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
-// Function to populate the table with coin data
-async function populateCoinsTable() {
-  const tokenData: Token[] | undefined = await getTokenData();
+// Function to populate the table with token data
+async function populateTokensTable() {
+  const tokenData = await getTokenData();
 
-  if (!tokenData) {
+  if (!tokenData || tokenData.length === 0) {
     console.error("No token data found");
     return;
   }
 
-  console.log("Starting to populate coins table...");
+  console.log("Starting to populate tokens table...");
   
+  const client = await pool.connect();
   try {
     // First ensure the table exists
     await createTableIfNotExists();
     
-    // Add each coin to the database
+    // Begin transaction
+    await client.query('BEGIN');
+    
+    // Clear existing data (optional)
+    await client.query(`TRUNCATE TABLE ${TOKEN_TABLE}`);
+    
+    // Add each token to the database
     for (const token of tokenData) {
-      const params = {
-        TableName: TOKEN_TABLE,
-        Item: token,
+      const query = {
+        text: `
+          INSERT INTO ${TOKEN_TABLE}
+          (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `,
+        values: [
+          token.id,
+          token.name,
+          token.symbol,
+          token.description,
+          token.image,
+          token.currentHolder,
+          token.minter,
+          token.currentPrice,
+          token.nextPrice,
+          token.pubkey
+        ]
       };
       
-      await docClient.send(new PutCommand(params));
+      await client.query(query);
       console.log(`Added token: ${token.name} (${token.symbol})`);
     }
     
+    // Commit transaction
+    await client.query('COMMIT');
+    
     console.log("Finished populating tokens table successfully!");
   } catch (error) {
+    // Rollback in case of error
+    await client.query('ROLLBACK');
     console.error("Error populating tokens table:", error);
+  } finally {
+    client.release();
   }
 }
 
-// Run the populate function
-populateCoinsTable();
+// Function to get top tokens by price
+async function getTopTokensByPrice(limit = 5) {
+  const client = await pool.connect();
+  try {
+    console.log(`Retrieving top ${limit} tokens sorted by price...`);
+    
+    const query = {
+      text: `
+        SELECT * FROM ${TOKEN_TABLE}
+        ORDER BY current_price DESC
+        LIMIT $1
+      `,
+      values: [limit]
+    };
+    
+    const result = await client.query(query);
+    
+    if (result.rows.length === 0) {
+      console.log("No tokens found in the database.");
+      return [];
+    }
+    
+    console.log(`Top ${result.rows.length} tokens by price:`);
+    result.rows.forEach((token: DbToken, index: number) => {
+      console.log(`${index + 1}. ${token.name} (${token.symbol}) - Current price: ${token.current_price} SOL`);
+    });
+    
+    return result.rows;
+  } catch (error) {
+    console.error("Error getting top tokens by price:", error);
+    return [];
+  } finally {
+    client.release();
+  }
+}
+
+// Main function to run everything
+async function main() {
+  try {
+    await populateTokensTable();
+    await getTopTokensByPrice(5);
+  } catch (error) {
+    console.error("Error in main function:", error);
+  } finally {
+    // Close the pool when done
+    await pool.end();
+  }
+}
+
+// Run the main function
+main();
