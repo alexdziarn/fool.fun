@@ -3,8 +3,11 @@ import { Connection, PublicKey, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/
 import { PROGRAM_ID } from '../config/constants';
 import { TokenPage } from './TokenPage';
 import { SortTokens, SortOption } from './SortTokens';
+import { useQuery } from '@apollo/client';
+import { GET_TOKEN_PAGE } from '../graphql/queries';
 
 interface Token {
+  id: string;
   name: string;
   symbol: string;
   description: string;
@@ -13,9 +16,8 @@ interface Token {
   minter: string;
   currentPrice: number;
   nextPrice: number;
-  pubkey: string;
+  pubkey?: string;
   createdAt?: number;
-  id: string;
 }
 
 interface TokenListProps {
@@ -24,19 +26,31 @@ interface TokenListProps {
 }
 
 export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
-  const [tokens, setTokens] = useState<Token[]>([]);
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Match the server's default page size
+  const PAGE_SIZE = 5;
 
+  // GraphQL query for paginated tokens
+  const { loading, error: graphqlError, data, refetch } = useQuery(GET_TOKEN_PAGE, {
+    variables: { page: currentPage },
+    // No need to specify pageSize since we're using the server default
+    fetchPolicy: 'cache-and-network',
+  });
+
+  // Legacy fetch function - can be used for refresh or if you need to bypass GraphQL
   const fetchTokens = async () => {
     if (isFetching) return;
     
     try {
       setIsFetching(true);
       setError(null);
+      setRefreshing(true);
       
       const connection = new Connection(clusterApiUrl('devnet'));
       
@@ -81,26 +95,30 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
             currentHolder,
             minter,
             currentPrice,
-            nextPrice
+            nextPrice,
+            pubkey: pubkey.toString()
           };
         } catch (err) {
           console.error(`Error parsing token ${pubkey.toString()}:`, err);
           return null;
         }
-      }).filter(token => token !== null);
+      }).filter(token => token !== null) as Token[];
       
-      setTokens(tokensData);
+      // Refresh the GraphQL query instead of setting tokens directly
+      refetch();
     } catch (err) {
       console.error('Error fetching tokens:', err);
       setError('Failed to load tokens. Please try again.');
     } finally {
       setIsFetching(false);
+      setRefreshing(false);
     }
   };
 
   // Initial fetch
   useEffect(() => {
-    fetchTokens();
+    // We can rely on the GraphQL query's initial load
+    // fetchTokens();
   }, []);
 
   const sortTokens = (tokensToSort: Token[]) => {
@@ -124,15 +142,32 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
     return new Date(timestamp * 1000).toLocaleString();
   };
 
+  const handleNextPage = () => {
+    if (data?.getTokenPage?.hasNextPage) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  // Get tokens from GraphQL response
+  const tokens = data?.getTokenPage?.tokens || [];
+  const totalCount = data?.getTokenPage?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
   if (selectedToken) {
     return (
       <TokenPage 
-        token={selectedToken} 
+        tokenId={selectedToken.id} 
         onBack={() => {
           setSelectedToken(null);
-          fetchTokens(); // Refresh after going back
+          refetch(); // Refresh after going back
         }}
-        onUpdate={fetchTokens} // Add this prop
+        onViewProfile={onViewProfile}
       />
     );
   }
@@ -146,9 +181,9 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
           <button
             onClick={fetchTokens}
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-purple-400"
-            disabled={refreshing}
+            disabled={refreshing || loading}
           >
-            {refreshing ? (
+            {(refreshing || loading) ? (
               <div className="flex items-center">
                 <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -163,37 +198,94 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
-        {sortTokens(tokens).map((token) => (
-          <div 
-            key={token.id}
-            onClick={() => onViewToken(token.id)}
-            className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600"
-          >
-            <img 
-              src={token.image} 
-              alt={token.name} 
-              className="w-full h-48 object-cover rounded-md mb-4"
-            />
-            <h3 className="text-xl font-bold mb-2">{token.name}</h3>
-            <p className="text-sm text-gray-300 mb-2">{token.symbol}</p>
-            <p className="text-sm mb-4">{token.description}</p>
-            <div className="flex justify-between text-sm">
-              <div>
-                <p>Current Price</p>
-                <p className="font-bold">{token.currentPrice} SOL</p>
+      {error && <div className="text-red-500 mb-4">{error}</div>}
+      {graphqlError && <div className="text-red-500 mb-4">Error: {graphqlError.message}</div>}
+
+      {tokens.length === 0 && !loading ? (
+        <div className="text-center py-8">No tokens found</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-8">
+            {sortTokens(tokens).map((token) => (
+              <div 
+                key={token.id}
+                onClick={() => setSelectedToken(token)}
+                className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600"
+              >
+                <img 
+                  src={token.image} 
+                  alt={token.name} 
+                  className="w-full h-48 object-cover rounded-md mb-4"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Image+Error';
+                  }}
+                />
+                <h3 className="text-xl font-bold mb-2">{token.name}</h3>
+                <p className="text-sm text-gray-300 mb-2">{token.symbol}</p>
+                <p className="text-sm mb-4">{token.description}</p>
+                <div className="flex justify-between text-sm">
+                  <div>
+                    <p>Current Price</p>
+                    <p className="font-bold">{token.currentPrice} SOL</p>
+                  </div>
+                  <div>
+                    <p>Next Price</p>
+                    <p className="font-bold">{token.nextPrice} SOL</p>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400 mt-2 space-y-1">
+                  <p>Holder: {token.currentHolder.slice(0, 4)}...{token.currentHolder.slice(-4)}</p>
+                </div>
               </div>
-              <div>
-                <p>Next Price</p>
-                <p className="font-bold">{token.nextPrice} SOL</p>
-              </div>
-            </div>
-            <div className="text-xs text-gray-400 mt-2 space-y-1">
-              <p>Holder: {token.currentHolder.slice(0, 4)}...{token.currentHolder.slice(-4)}</p>
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
+          
+          {/* Enhanced pagination controls */}
+          <div className="flex justify-between items-center mt-8">
+            <button 
+              onClick={handlePrevPage} 
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+            >
+              Previous
+            </button>
+            
+            <div className="flex items-center space-x-2">
+              {/* Add page number buttons for better navigation */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const pageNum = i + Math.max(1, currentPage - 2);
+                if (pageNum <= totalPages) {
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 h-8 rounded-full ${
+                        currentPage === pageNum 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-700 hover:bg-gray-600'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                }
+                return null;
+              })}
+              {totalPages > 5 && currentPage < totalPages - 2 && (
+                <span className="text-gray-400">...</span>
+              )}
+            </div>
+            
+            <button 
+              onClick={handleNextPage} 
+              disabled={!data?.getTokenPage?.hasNextPage}
+              className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }; 

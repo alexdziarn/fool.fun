@@ -219,7 +219,7 @@ export const TokenPage = ({ tokenId, onBack, onViewProfile }: TokenPageProps) =>
         
         // Add a small delay between batches to avoid rate limiting
         if (i + BATCH_SIZE < signatures.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 

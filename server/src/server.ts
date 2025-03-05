@@ -13,9 +13,22 @@ import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { uploadToPinata } from './pinata';
+import { Pool } from 'pg';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 // const firebaseApp = initializeApp(firebaseConfig);
 // const storage = getStorage(firebaseApp);
+
+// Configure PostgreSQL connection
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'tokens_db',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres'
+});
 
 // Define TypeDefs
 const typeDefs = `#graphql
@@ -25,8 +38,29 @@ const typeDefs = `#graphql
     url: String!
   }
 
+  type Token {
+    id: String!
+    name: String!
+    symbol: String!
+    description: String
+    image: String
+    currentHolder: String!
+    minter: String!
+    currentPrice: Float!
+    nextPrice: Float!
+    pubkey: String
+    createdAt: String
+  }
+
+  type TokenPage {
+    tokens: [Token!]!
+    totalCount: Int!
+    hasNextPage: Boolean!
+  }
+
   type Query {
     hello: String
+    getTokenPage(page: Int!, pageSize: Int = 5): TokenPage!
   }
 
   type AuthResponse {
@@ -55,7 +89,70 @@ interface FileUpload {
 const resolvers = {
   Upload: GraphQLUpload,
   Query: {
-    hello: () => 'Hello World!'
+    hello: () => 'Hello World!',
+    getTokenPage: async (_: any, { page, pageSize }: { page: number, pageSize: number }) => {
+      // Validate input
+      if (page < 1) {
+        throw new GraphQLError('Page number must be greater than 0', {
+          extensions: { code: 'BAD_USER_INPUT' }
+        });
+      }
+
+      const client = await pool.connect();
+      try {
+        // Calculate offset
+        const offset = (page - 1) * pageSize;
+        
+        // Get tokens for the requested page
+        const tokensQuery = {
+          text: `
+            SELECT 
+              id, 
+              name, 
+              symbol, 
+              description, 
+              image, 
+              current_holder as "currentHolder", 
+              minter, 
+              current_price as "currentPrice", 
+              next_price as "nextPrice", 
+              pubkey,
+              created_at as "createdAt"
+            FROM tokens
+            ORDER BY current_price DESC
+            LIMIT $1 OFFSET $2
+          `,
+          values: [pageSize, offset]
+        };
+        
+        // Get total count for pagination info
+        const countQuery = {
+          text: 'SELECT COUNT(*) FROM tokens'
+        };
+        
+        const [tokensResult, countResult] = await Promise.all([
+          client.query(tokensQuery),
+          client.query(countQuery)
+        ]);
+        
+        const tokens = tokensResult.rows;
+        const totalCount = parseInt(countResult.rows[0].count);
+        const hasNextPage = offset + tokens.length < totalCount;
+        
+        return {
+          tokens,
+          totalCount,
+          hasNextPage
+        };
+      } catch (error) {
+        console.error('Error fetching token page:', error);
+        throw new GraphQLError('Failed to fetch tokens', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      } finally {
+        client.release();
+      }
+    }
   },
 
   Mutation: {
@@ -143,9 +240,16 @@ const startServer = async () => {
     }) as unknown as express.RequestHandler
   );
   
-  app.listen(4000, () => {
-    console.log(`🚀 Server ready at http://localhost:4000/graphql`);
+  app.listen(process.env.SERVER_PORT || 4000, () => {
+    console.log(`🚀 Server ready at http://localhost:${process.env.SERVER_PORT || 4000}/graphql`);
   });
 };
+
+// Graceful shutdown to close the database pool
+process.on('SIGINT', async () => {
+  console.log('Closing database pool...');
+  await pool.end();
+  process.exit(0);
+});
 
 startServer();
