@@ -4,7 +4,13 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "populate": "ts-node populate.ts"
+    "populate": "ts-node populate.ts",
+    "populate-tokens": "ts-node populate-tokens.ts",
+    "debug-tokens": "ts-node populate-tokens.ts --debug --limit 3",
+    "create-token-table": "ts-node tokens.ts",
+    "create-transaction-table": "ts-node transactions.ts",
+    "populate-transactions": "ts-node populate-transactions.ts",
+    "setup-all": "ts-node tokens.ts && ts-node transactions.ts && ts-node populate-tokens.ts && ts-node populate-transactions.ts"
   },
   "author": "",
   "license": "ISC",
