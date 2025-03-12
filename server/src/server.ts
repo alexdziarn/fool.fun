@@ -58,9 +58,31 @@ const typeDefs = `#graphql
     hasNextPage: Boolean!
   }
 
+  type Transaction {
+    id: String!
+    tokenId: String!
+    type: String!
+    fromAddress: String!
+    toAddress: String!
+    amount: Float
+    timestamp: String!
+    blockNumber: Int
+    slot: Int
+    fee: Float
+    success: Boolean!
+    createdAt: String
+  }
+
+  type TokenWithTransactions {
+    token: Token!
+    transactions: [Transaction!]!
+    transactionCount: Int!
+  }
+
   type Query {
     hello: String
     getTokenPage(page: Int!, pageSize: Int = 5): TokenPage!
+    getTokenById(id: String!): TokenWithTransactions
   }
 
   type AuthResponse {
@@ -147,6 +169,105 @@ const resolvers = {
       } catch (error) {
         console.error('Error fetching token page:', error);
         throw new GraphQLError('Failed to fetch tokens', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      } finally {
+        client.release();
+      }
+    },
+    getTokenById: async (_: any, { id }: { id: string }) => {
+      const client = await pool.connect();
+      try {
+        // Get token data
+        const tokenQuery = {
+          text: `
+            SELECT 
+              id, 
+              name, 
+              symbol, 
+              description, 
+              image, 
+              current_holder as "currentHolder", 
+              minter, 
+              current_price as "currentPrice", 
+              next_price as "nextPrice", 
+              pubkey,
+              created_at as "createdAt"
+            FROM tokens
+            WHERE id = $1
+          `,
+          values: [id]
+        };
+        
+        // Get token transactions
+        const transactionsQuery = {
+          text: `
+            SELECT 
+              id,
+              token_id as "tokenId",
+              type,
+              from_address as "fromAddress",
+              to_address as "toAddress",
+              amount,
+              timestamp,
+              block_number as "blockNumber",
+              slot,
+              fee,
+              success,
+              created_at as "createdAt"
+            FROM transactions
+            WHERE token_id = $1
+            ORDER BY timestamp DESC
+            LIMIT 50
+          `,
+          values: [id]
+        };
+        
+        // Get transaction count
+        const countQuery = {
+          text: 'SELECT COUNT(*) FROM transactions WHERE token_id = $1',
+          values: [id]
+        };
+        
+        // Execute all queries in parallel
+        const [tokenResult, transactionsResult, countResult] = await Promise.all([
+          client.query(tokenQuery),
+          client.query(transactionsQuery),
+          client.query(countQuery)
+        ]);
+        
+        const token = tokenResult.rows[0];
+        
+        // If token not found, return null
+        if (!token) {
+          return null;
+        }
+        
+        const transactions = transactionsResult.rows;
+        const transactionCount = parseInt(countResult.rows[0].count);
+        
+        // Format dates as ISO strings
+        if (token.createdAt) {
+          token.createdAt = new Date(token.createdAt).toISOString();
+        }
+        
+        transactions.forEach(tx => {
+          if (tx.timestamp) {
+            tx.timestamp = new Date(tx.timestamp).toISOString();
+          }
+          if (tx.createdAt) {
+            tx.createdAt = new Date(tx.createdAt).toISOString();
+          }
+        });
+        
+        return {
+          token,
+          transactions,
+          transactionCount
+        };
+      } catch (error) {
+        console.error('Error fetching token by ID:', error);
+        throw new GraphQLError('Failed to fetch token', {
           extensions: { code: 'INTERNAL_SERVER_ERROR' }
         });
       } finally {
