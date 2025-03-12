@@ -181,7 +181,6 @@ async function populateTransactionsTable() {
       
       // Fetch transaction history
       const transactions = await fetchTransactionHistory(token.pubkey, token.id);
-      console.log(`Found ${transactions.length} transactions for token ${token.id}`);
       
       // Insert transactions into the database
       for (const transaction of transactions) {
