@@ -4,6 +4,7 @@ import { Connection, clusterApiUrl, PublicKey } from '@solana/web3.js';
 import { PROGRAM_ID } from '../config/constants';
 import { TokenPage } from './TokenPage';
 import { SortTokens, SortOption } from './SortTokens';
+import { useParams, useNavigate } from 'react-router-dom';
 
 interface OwnedToken {
   pubkey: string;
@@ -18,19 +19,27 @@ interface OwnedToken {
   createdAt?: number;
 }
 
-export const ProfilePage = ({ walletAddress, onBack, onViewToken }: {
-  walletAddress: string;
-  onBack: () => void;
-  onViewToken: (tokenId: string) => void;
-}) => {
+export const ProfilePage = () => {
+  const { walletAddress } = useParams<{ walletAddress: string }>();
+  const navigate = useNavigate();
   const { publicKey } = useWallet();
   const [ownedTokens, setOwnedTokens] = useState<OwnedToken[]>([]);
   const [selectedToken, setSelectedToken] = useState<any>(null);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   const [refreshing, setRefreshing] = useState(false);
+  const [isCurrentUser, setIsCurrentUser] = useState(false);
+
+  // Check if the profile being viewed is the current user's profile
+  useEffect(() => {
+    if (publicKey && walletAddress) {
+      setIsCurrentUser(publicKey.toString() === walletAddress);
+    } else {
+      setIsCurrentUser(false);
+    }
+  }, [publicKey, walletAddress]);
 
   const fetchOwnedTokens = async () => {
-    if (!publicKey) return;
+    if (!walletAddress) return;
     
     try {
       setRefreshing(true);
@@ -85,17 +94,14 @@ export const ProfilePage = ({ walletAddress, onBack, onViewToken }: {
           nextPrice,
           createdAt: 0
         };
-      });
+      }).filter(token => token.currentHolder === walletAddress);
 
-      const userTokens = tokensWithoutDates.filter(
-        token => token.currentHolder === publicKey.toString()
-      );
-      setOwnedTokens(userTokens); // Set tokens immediately
+      setOwnedTokens(tokensWithoutDates); // Set tokens immediately
 
       // Then fetch creation times in batches
       const BATCH_SIZE = 4;
-      for (let i = 0; i < userTokens.length; i += BATCH_SIZE) {
-        const batch = userTokens.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < tokensWithoutDates.length; i += BATCH_SIZE) {
+        const batch = tokensWithoutDates.slice(i, i + BATCH_SIZE);
         
         const updatedBatch = await Promise.all(
           batch.map(async (token) => {
@@ -129,15 +135,16 @@ export const ProfilePage = ({ walletAddress, onBack, onViewToken }: {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     } catch (error) {
-      console.error('Error fetching owned tokens:', error);
+      console.error('Error fetching tokens:', error);
     } finally {
       setRefreshing(false);
     }
   };
 
+  // Call fetchOwnedTokens when walletAddress changes
   useEffect(() => {
     fetchOwnedTokens();
-  }, [publicKey]);
+  }, [walletAddress]);
 
   const sortTokens = (tokensToSort: OwnedToken[]) => {
     return [...tokensToSort].sort((a, b) => {
@@ -155,41 +162,39 @@ export const ProfilePage = ({ walletAddress, onBack, onViewToken }: {
       }
     });
   };
+  
+  const handleViewToken = (tokenId: string) => {
+    navigate(`/token/${tokenId}`);
+  };
 
-  if (selectedToken) {
-    return (
-      <TokenPage 
-        token={selectedToken} 
-        onBack={() => {
-          setSelectedToken(null);
-          fetchOwnedTokens(); // Refresh tokens when returning
-        }}
-        onUpdate={fetchOwnedTokens}
-      />
-    );
-  }
-
-  if (!publicKey) {
+  if (!walletAddress) {
     return <div>Please connect your wallet to view your profile.</div>;
   }
 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-2">Your Profile</h2>
-        <p className="text-gray-400 font-mono">
-          Wallet: {publicKey?.toString()}
-        </p>
+        
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-2">
+            {isCurrentUser ? 'My Profile' : 'User Profile'}
+          </h2>
+          <p className="text-gray-400 font-mono">
+            Wallet: {walletAddress}
+          </p>
+        </div>
       </div>
 
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold">Your Tokens ({ownedTokens.length})</h3>
+          <h3 className="text-xl font-semibold">
+            {isCurrentUser ? 'My Tokens' : 'User\'s Tokens'}
+          </h3>
           <div className="flex gap-4 items-center">
             <SortTokens sortBy={sortBy} onChange={setSortBy} />
             <button
               onClick={fetchOwnedTokens}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-purple-400"
+              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-500 disabled:bg-purple-400"
               disabled={refreshing}
             >
               {refreshing ? (
@@ -214,7 +219,7 @@ export const ProfilePage = ({ walletAddress, onBack, onViewToken }: {
               <div 
                 key={token.pubkey} 
                 className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600 transition-all duration-200"
-                onClick={() => onViewToken(token.pubkey)}
+                onClick={() => handleViewToken(token.pubkey)}
               >
                 <img src={token.image} alt={token.name} className="w-full h-48 object-cover rounded-lg mb-4" />
                 <h4 className="text-lg font-bold mb-2">{token.name}</h4>

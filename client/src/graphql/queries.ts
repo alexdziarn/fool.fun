@@ -19,4 +19,34 @@ export const GET_TOKEN_PAGE = gql`
       hasNextPage
     }
   }
+`;
+
+export const GET_TOKEN_BY_ID = gql`
+  query GetTokenById($id: String!) {
+    getTokenById(id: $id) {
+      token {
+        id
+        name
+        symbol
+        description
+        image
+        currentHolder
+        minter
+        currentPrice
+        nextPrice
+        pubkey
+        createdAt
+      }
+      transactions {
+        id
+        type
+        fromAddress
+        toAddress
+        amount
+        timestamp
+        success
+      }
+      transactionCount
+    }
+  }
 `; 

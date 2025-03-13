@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Connection, PublicKey, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { PROGRAM_ID } from '../config/constants';
-import { TokenPage } from './TokenPage';
 import { SortTokens, SortOption } from './SortTokens';
 import { useQuery } from '@apollo/client';
 import { GET_TOKEN_PAGE } from '../graphql/queries';
+import { useNavigate } from 'react-router-dom';
 
 interface Token {
   id: string;
@@ -20,13 +20,13 @@ interface Token {
   createdAt?: number;
 }
 
-interface TokenListProps {
-  onViewProfile: (address: string) => void;
-  onViewToken: (tokenId: string) => void;
+export interface TokenListProps {
+  onViewProfile?: (address: string) => void;
+  onViewToken?: (tokenId: string) => void;
 }
 
-export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) => {
+  const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   const [isFetching, setIsFetching] = useState(false);
@@ -159,18 +159,21 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
   const totalCount = data?.getTokenPage?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  if (selectedToken) {
-    return (
-      <TokenPage 
-        tokenId={selectedToken.id} 
-        onBack={() => {
-          setSelectedToken(null);
-          refetch(); // Refresh after going back
-        }}
-        onViewProfile={onViewProfile}
-      />
-    );
-  }
+  const handleViewProfile = (address: string) => {
+    if (onViewProfile) {
+      onViewProfile(address);
+    } else {
+      navigate(`/profile/${address}`);
+    }
+  };
+  
+  const handleViewToken = (tokenId: string) => {
+    if (onViewToken) {
+      onViewToken(tokenId);
+    } else {
+      navigate(`/token/${tokenId}`);
+    }
+  };
 
   return (
     <div className="p-4">
@@ -209,7 +212,7 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps) => {
             {sortTokens(tokens).map((token) => (
               <div 
                 key={token.id}
-                onClick={() => setSelectedToken(token)}
+                onClick={() => handleViewToken(token.id)}
                 className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600"
               >
                 <img 

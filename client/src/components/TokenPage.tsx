@@ -2,21 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { 
   PublicKey, 
-  Transaction, 
+  Transaction as SolanaTransaction, 
   SystemProgram, 
   LAMPORTS_PER_SOL,
   Connection, 
   clusterApiUrl, 
-  TransactionInstruction,
-  ParsedInstruction,
-  ParsedTransactionWithMeta
+  TransactionInstruction
 } from '@solana/web3.js';
 import { PROGRAM_ID, DEV_WALLET } from '../config/constants';
+import { useQuery } from '@apollo/client';
+import { GET_TOKEN_BY_ID } from '../graphql/queries';
+import { useParams, useNavigate } from 'react-router-dom';
 
-interface TokenPageProps {
-  tokenId: string;
-  onBack: () => void;
-  onViewProfile: (address: string) => void;
+export interface TokenPageProps {
+  tokenId?: string;
+  onBack?: () => void;
+  onViewProfile?: (address: string) => void;
+  onUpdate?: () => void;
+  token?: Token;
 }
 
 interface Token {
@@ -29,348 +32,154 @@ interface Token {
   minter: string;
   currentPrice: number;
   nextPrice: number;
+  pubkey?: string;
 }
 
-interface TransactionHistory {
-  signature: string;
-  type: 'steal' | 'transfer' | 'create';
-  timestamp: number;
-  from: string;
-  to: string;
+interface Transaction {
+  id: string;
+  type: string;
+  fromAddress: string;
+  toAddress: string;
   amount?: number;
+  timestamp: string;
+  success: boolean;
 }
 
-export const TokenPage = ({ tokenId, onBack, onViewProfile }: TokenPageProps) => {
+export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdate, token: propToken }: TokenPageProps) => {
+  const params = useParams<{ tokenId: string }>();
+  const navigate = useNavigate();
+  
+  // Use the tokenId from props if provided, otherwise use from URL params
+  const tokenId = propTokenId || params.tokenId;
+  
+  // Define navigation functions if not provided via props
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      navigate('/');
+    }
+  };
+  
+  const handleViewProfile = (address: string) => {
+    if (onViewProfile) {
+      onViewProfile(address);
+    } else {
+      navigate(`/profile/${address}`);
+    }
+  };
+  
   const { publicKey, sendTransaction } = useWallet();
-  const [token, setToken] = useState<Token | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
   const [stealAmount, setStealAmount] = useState(0);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferAddress, setTransferAddress] = useState('');
   const [transferError, setTransferError] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
-  const [transactions, setTransactions] = useState<TransactionHistory[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
   const [transferSuccess, setTransferSuccess] = useState(false);
   const [transferInProgress, setTransferInProgress] = useState(false);
+  const [invalidTokenId, setInvalidTokenId] = useState<string | null>(null);
 
-  // Load token data on mount
+  // Validate token ID format
   useEffect(() => {
-    const loadToken = async () => {
-      try {
-        setIsLoading(true);
-        const connection = new Connection(clusterApiUrl('devnet'));
-        const tokenPubkey = new PublicKey(tokenId);
-        const account = await connection.getAccountInfo(tokenPubkey);
-        
-        if (!account) {
-          throw new Error('Token not found');
-        }
-
-        // Parse token data
-        const data = account.data;
-        let offset = 8; // Skip discriminator
-
-        // Helper to read string
-        const readString = () => {
-          const len = data.readUInt32LE(offset);
-          offset += 4;
-          const str = data.slice(offset, offset + len).toString();
-          offset += len;
-          return str;
-        };
-
-        const name = readString();
-        const symbol = readString();
-        const description = readString();
-        const image = readString();
-        const currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
-        offset += 32;
-        const minter = new PublicKey(data.slice(offset, offset + 32)).toString();
-        offset += 64; // skip minter and dev
-
-        const currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
-        offset += 8;
-        const nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
-
-        const tokenData = {
-          id: tokenId,
-          name,
-          symbol,
-          description,
-          image,
-          currentHolder,
-          minter,
-          currentPrice,
-          nextPrice
-        };
-
-        setToken(tokenData);
-        setStealAmount(currentPrice); // Initialize steal amount with current price
-
-      } catch (err) {
-        console.error('Error loading token:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load token');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadToken();
+    // Check if tokenId is in a valid format (you can customize this validation)
+    // For example, if token IDs should be UUIDs or have a specific format
+    if (!tokenId || tokenId.trim() === '') {
+      setInvalidTokenId('Token ID cannot be empty');
+    } else if (tokenId.length < 5) {
+      // Example validation - adjust based on your actual token ID format
+      setInvalidTokenId('Invalid token ID format');
+    } else {
+      setInvalidTokenId(null);
+    }
   }, [tokenId]);
 
-  // Extract fetchTransactionHistory outside the useEffect
-  const fetchTransactionHistory = async () => {
-    if (!token) return;
-    
-    try {
-      setLoadingHistory(true);
-      const connection = new Connection(clusterApiUrl('devnet'));
-      
-      const [tokenPDA] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('token'),
-          new PublicKey(token.minter).toBuffer(),
-          Buffer.from(token.name)
-        ],
-        PROGRAM_ID
-      );
-
-      // 1. Get all signatures in one call
-      const signatures = await connection.getSignaturesForAddress(tokenPDA);
-      
-      // 2. Batch process transactions (10 at a time to avoid rate limits)
-      const BATCH_SIZE = 10;
-      const allTransactions: TransactionHistory[] = [];
-      
-      for (let i = 0; i < signatures.length; i += BATCH_SIZE) {
-        const batch = signatures.slice(i, i + BATCH_SIZE);
-        
-        // Process this batch in parallel
-        const batchPromises: Promise<ParsedTransactionWithMeta | null>[] = batch.map(sig => 
-          connection.getParsedTransaction(sig.signature, {
-            maxSupportedTransactionVersion: 0
-          })
-        );
-        
-        // Wait for all transactions in this batch to be fetched
-        const txBatch = await Promise.all(batchPromises);
-        
-        // Process the fetched transactions
-        const batchResults = txBatch.map((tx, index) => {
-          try {
-            if (!tx?.meta?.logMessages) return null;
-            
-            const sig = batch[index].signature;
-            const timestamp = batch[index].blockTime || 0;
-            const logs = tx.meta.logMessages;
-            
-            const isSteal = logs.some(log => log.includes('Instruction: Steal'));
-            const isTransfer = logs.some(log => log.includes('Instruction: Transfer'));
-            const isCreate = logs.some(log => log.includes('Instruction: Initialize'));
-            
-            if (!isSteal && !isTransfer && !isCreate) return null;
-            
-            let amount = 0;
-            let from = '';
-            let to = '';
-            
-            if (isSteal) {
-              if (!tx?.meta?.innerInstructions) {
-                console.log('No inner instructions found');
-                return null;
-              }
-              tx.meta.innerInstructions.forEach((inner) => {
-                inner.instructions.slice(0, 3).forEach((ix) => {
-                  const parsedIx = ix as ParsedInstruction;
-                  if (parsedIx.parsed?.type === 'transfer') {
-                    const info = parsedIx.parsed.info;
-                    amount += info.lamports / 1e9;
-                  }
-                });
-                to = inner.instructions[0].parsed.info.source;
-                from = inner.instructions[0].parsed.info.destination;
-              });
-            } else if (isCreate) {
-              from = 'System';
-              to = tx.meta.innerInstructions?.[0]?.instructions[0]?.parsed?.info?.source || '';
-            } else if (isTransfer) {
-              from = tx.transaction.message.instructions[2].accounts?.[1]?.toString() || '';
-              to = tx.transaction.message.instructions[2].accounts?.[2]?.toString() || '';
-            }
-            
-            return {
-              signature: sig,
-              timestamp,
-              type: isSteal ? 'steal' : isTransfer ? 'transfer' : 'create',
-              from,
-              to,
-              amount: isSteal ? amount : undefined
-            };
-          } catch (error) {
-            console.error('Error parsing transaction:', error);
-            return null;
-          }
-        });
-        
-        // Add valid transactions from this batch
-        allTransactions.push(...batchResults.filter((tx): tx is TransactionHistory => tx !== null));
-        
-        // Add a small delay between batches to avoid rate limiting
-        if (i + BATCH_SIZE < signatures.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-
-      setTransactions(allTransactions);
-    } catch (error) {
-      console.error('Error fetching transaction history:', error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  // Then in the useEffect, just call the function
+  // Handle redirection for invalid token ID
   useEffect(() => {
-    if (!token) return;
-    fetchTransactionHistory();
+    if (invalidTokenId) {
+      // Redirect to token/not-found page
+      navigate('/token/not-found', { replace: true });
+    }
+  }, [invalidTokenId, navigate]);
+
+  // Fetch token data using GraphQL
+  const { loading: isLoading, error: queryError, data, refetch } = useQuery(GET_TOKEN_BY_ID, {
+    variables: { id: tokenId },
+    fetchPolicy: 'cache-and-network',
+    skip: !!invalidTokenId, // Skip the query if token ID is invalid
+    onCompleted: (data) => {
+      // Check if token exists in the response
+      if (!data?.getTokenById?.token) {
+        console.log('Token not found in GraphQL response, redirecting to token/not-found page');
+        navigate('/token/not-found', { replace: true });
+      }
+    },
+    onError: (error) => {
+      console.error('GraphQL error when fetching token:', error);
+      navigate('/token/not-found', { replace: true });
+    }
+  });
+
+  // Extract token and transactions from GraphQL response
+  const token = data?.getTokenById?.token || null;
+  const transactions = data?.getTokenById?.transactions || [];
+  const transactionCount = data?.getTokenById?.transactionCount || 0;
+  const error = queryError ? queryError.message : '';
+
+  // Immediate redirect if data is loaded but token is null
+  useEffect(() => {
+    if (!isLoading && data && !token) {
+      console.log('Data loaded but token is null, redirecting to token/not-found page');
+      navigate('/token/not-found', { replace: true });
+    }
+  }, [isLoading, data, token, navigate]);
+
+  // Debug logging to help diagnose the issue
+  useEffect(() => {
+    console.log('TokenPage debug:', { 
+      isLoading, 
+      error, 
+      hasToken: !!token, 
+      tokenId,
+      data: data?.getTokenById
+    });
+  }, [isLoading, error, token, tokenId, data]);
+
+  // Set initial steal amount when token data is loaded
+  useEffect(() => {
+    if (token) {
+      setStealAmount(token.currentPrice);
+    }
   }, [token]);
+
+  // Notify parent when token is not found after loading is complete
+  useEffect(() => {
+    // Only execute this effect when loading is complete and we have a result
+    if (!isLoading && (error || !token)) {
+      console.log('Redirecting to token/not-found page because token does not exist');
+      // Redirect to token/not-found page
+      navigate('/token/not-found', { replace: true });
+    }
+  }, [isLoading, error, token, navigate]);
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
 
-  if (isLoading) {
-    return <div>Loading token...</div>;
-  }
-
-  if (error || !token) {
-    return (
-      <div>
-        <button onClick={onBack} className="text-gray-400 hover:text-white mb-4">
-          ← Back to list
-        </button>
-        <div className="text-red-500">{error || 'Token not found'}</div>
-      </div>
-    );
-  }
-
-  const isOwner = publicKey?.toBase58() === token.currentHolder;
-
-  const handleSteal = async () => {
-    if (!publicKey) return;
-    setError('');
-    setIsLoading(true);
-
-    try {
-      const connection = new Connection(clusterApiUrl('devnet'));
-      
-      // Add logging for amount being sent
-      console.log('Sending amount:', stealAmount, 'SOL');
-      console.log('Current price:', token.currentPrice, 'SOL');
-
-      // Check wallet balance using stealAmount
-      const balance = await connection.getBalance(publicKey);
-      const requiredBalance = stealAmount * LAMPORTS_PER_SOL + 0.001 * LAMPORTS_PER_SOL;
-      
-      if (balance < requiredBalance) {
-        throw new Error(`Insufficient balance. Need ${stealAmount + 0.001} SOL (including fees)`);
-      }
-
-      const [tokenPDA] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('token'),
-          new PublicKey(token.minter).toBuffer(),
-          Buffer.from(token.name)
-        ],
-        PROGRAM_ID
-      );
-
-      // Create instruction data with amount
-      const amountBuffer = Buffer.alloc(8);
-      console.log("stealAmount", stealAmount);
-      const amountInLamports = BigInt(Math.floor(stealAmount * LAMPORTS_PER_SOL));
-      amountBuffer.writeBigUInt64LE(amountInLamports);
-
-      const instructionData = Buffer.concat([
-        Buffer.from([106, 222, 218, 118, 8, 131, 144, 221]), // steal discriminator
-        amountBuffer // steal amount in lamports
-      ]);
-
-      const instruction = new TransactionInstruction({
-        keys: [
-          { pubkey: tokenPDA, isSigner: false, isWritable: true },          // token
-          { pubkey: publicKey, isSigner: true, isWritable: true },          // stealer
-          { pubkey: new PublicKey(token.currentHolder), isSigner: false, isWritable: true }, // current_holder
-          { pubkey: new PublicKey(DEV_WALLET), isSigner: false, isWritable: true }, // dev
-          { pubkey: new PublicKey(token.minter), isSigner: false, isWritable: true }, // minter
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false } // system_program
-        ],
-        programId: PROGRAM_ID,
-        data: instructionData  // Use the instruction data with amount
-      });
-
-      const transaction = new Transaction();
-      transaction.add(instruction);
-
-      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      transaction.feePayer = publicKey;
-
-      // Simulate transaction
-      console.log('Simulating transaction...');
-      const simulation = await connection.simulateTransaction(transaction);
-      
-      if (simulation.value.err) {
-        console.error('Simulation error:', simulation.value.logs);
-        throw new Error(`Simulation failed: ${simulation.value.err.toString()}`);
-      }
-
-      // Log simulation results
-      console.log('Simulation successful. Logs:', simulation.value.logs);
-
-      // Execute transaction
-      const signature = await sendTransaction(transaction, connection);
-      console.log("Transaction sent:", signature);
-
-      // Wait for confirmation and get transaction details
-      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-      const txDetails = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0 });
-      
-      if (txDetails) {
-        console.log('Transaction details:', txDetails);
-        // Look for refund in transaction details
-        const postBalances = txDetails.meta?.postBalances;
-        const preBalances = txDetails.meta?.preBalances;
-        if (postBalances && preBalances) {
-          const balanceChange = (postBalances[1] - preBalances[1]) / LAMPORTS_PER_SOL;
-          console.log('Balance change:', balanceChange, 'SOL');
-        }
-      }
-      console.log('Token stolen successfully!');
-      onViewProfile(token.currentHolder);
-      onBack();
-    } catch (err: any) {
-      console.error('Failed to steal token:', err);
-      setError(err.message || 'Failed to steal token. Please try again.');
-      onViewProfile(token.currentHolder);
-    } finally {
-      setIsLoading(false);
-    }
+  const formatDate = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString();
   };
 
-  const handleTransfer = async () => {
-    if (!publicKey) return;
-    setTransferError('');
-    setTransferInProgress(true);
-    setIsTransferring(true);
-    setTransferSuccess(false);
+  // Check if the current user is the token owner
+  const isOwner = publicKey && token?.currentHolder === publicKey.toString();
 
+  const handleSteal = async () => {
+    if (!publicKey || !token) return;
+    
     try {
-      // Validate the transfer address
-      const recipientPubkey = new PublicKey(transferAddress);
+      setTransferInProgress(true);
+      const connection = new Connection(clusterApiUrl('devnet'));
       
+      // Find the token PDA
       const [tokenPDA] = PublicKey.findProgramAddressSync(
         [
           Buffer.from('token'),
@@ -379,190 +188,365 @@ export const TokenPage = ({ tokenId, onBack, onViewProfile }: TokenPageProps) =>
         ],
         PROGRAM_ID
       );
-
+      
+      // Create the instruction
       const instruction = new TransactionInstruction({
         keys: [
           { pubkey: tokenPDA, isSigner: false, isWritable: true },
-          { pubkey: publicKey, isSigner: true, isWritable: false },
-          { pubkey: recipientPubkey, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+          { pubkey: publicKey, isSigner: true, isWritable: true },
+          { pubkey: new PublicKey(token.currentHolder), isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
-        data: Buffer.from([163, 52, 200, 231, 140, 3, 69, 186]) // transfer discriminator
+        data: Buffer.from([1]) // 1 = steal instruction
       });
-
-      const transaction = new Transaction();
+      
+      const transaction = new SolanaTransaction();
       transaction.add(instruction);
-
-      const connection = new Connection(clusterApiUrl('devnet'));
-      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      transaction.feePayer = publicKey;
-
+      
+      // Send the transaction
       const signature = await sendTransaction(transaction, connection);
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      console.log('Token transferred successfully!');
-      setTransferSuccess(true);
-    } catch (err: any) {
-      console.error('Failed to transfer token:', err);
-      setTransferError(err.message || 'Failed to transfer token. Please try again.');
+      
+      // Wait for confirmation
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed');
+      }
+      
+      // Refresh token data
+      refetch();
+      
+      // Show success message
+      alert(`Successfully stole the token for ${stealAmount} SOL!`);
+    } catch (err) {
+      console.error('Error stealing token:', err);
+      alert('Failed to steal token. See console for details.');
     } finally {
-      setIsTransferring(false);
       setTransferInProgress(false);
     }
   };
-
-  const TransferModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
-        {transferSuccess ? (
-          <div className="flex flex-col items-center justify-center p-4">
-            <div className="w-16 h-16 bg-green-800 rounded-full flex items-center justify-center mb-4">
-              <svg className="w-10 h-10 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-              </svg>
+  
+  const handleTransfer = async () => {
+    if (!publicKey || !token) return;
+    
+    try {
+      setTransferError('');
+      
+      // Validate address
+      let recipientPubkey;
+      try {
+        recipientPubkey = new PublicKey(transferAddress);
+      } catch (err) {
+        setTransferError('Invalid Solana address');
+        return;
+      }
+      
+      // Don't transfer to self
+      if (recipientPubkey.equals(publicKey)) {
+        setTransferError('Cannot transfer to yourself');
+        return;
+      }
+      
+      setIsTransferring(true);
+      const connection = new Connection(clusterApiUrl('devnet'));
+      
+      // Find the token PDA
+      const [tokenPDA] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from('token'),
+          new PublicKey(token.minter).toBuffer(),
+          Buffer.from(token.name)
+        ],
+        PROGRAM_ID
+      );
+      
+      // Create the instruction
+      const instruction = new TransactionInstruction({
+        keys: [
+          { pubkey: tokenPDA, isSigner: false, isWritable: true },
+          { pubkey: publicKey, isSigner: true, isWritable: true },
+          { pubkey: recipientPubkey, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        programId: PROGRAM_ID,
+        data: Buffer.from([2]) // 2 = transfer instruction
+      });
+      
+      const transaction = new SolanaTransaction();
+      transaction.add(instruction);
+      
+      // Send the transaction
+      const signature = await sendTransaction(transaction, connection);
+      
+      // Wait for confirmation
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed');
+      }
+      
+      // Show success message and close modal
+      setTransferSuccess(true);
+      setTimeout(() => {
+        setShowTransferModal(false);
+        setTransferSuccess(false);
+        setTransferAddress('');
+        
+        // Refresh token data
+        refetch();
+      }, 2000);
+    } catch (err) {
+      console.error('Error transferring token:', err);
+      setTransferError('Failed to transfer token. See console for details.');
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+  
+  // Transfer modal component
+  const TransferModal = () => {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-gray-800 p-6 rounded-lg w-full max-w-md">
+          <h2 className="text-xl font-bold mb-4">Transfer Token</h2>
+          
+          {transferSuccess ? (
+            <div className="text-green-400 mb-4">
+              Token transferred successfully!
             </div>
-            <h3 className="text-xl font-bold mb-4 text-center">Token Transferred Successfully!</h3>
-            <button
-              onClick={() => {
-                setShowTransferModal(false);
-                setTransferSuccess(false);
-              }}
-              className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-500 mt-4"
-            >
-              Close
-            </button>
-          </div>
-        ) : transferInProgress ? (
-          <div className="flex flex-col items-center justify-center p-4">
-            <svg className="animate-spin h-10 w-10 mb-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-            <p>Processing transfer...</p>
-          </div>
-        ) : (
-          <>
-            <h3 className="text-xl font-bold mb-4">Transfer Token</h3>
-            <div className="mb-4">
-              <label className="block text-sm mb-2">Recipient Address</label>
+          ) : (
+            <>
+              <p className="mb-4">
+                Enter the Solana address of the recipient:
+              </p>
+              
               <input
                 type="text"
                 value={transferAddress}
                 onChange={(e) => setTransferAddress(e.target.value)}
-                className="w-full p-2 bg-gray-700 rounded border border-gray-600 text-white"
-                placeholder="Enter Solana address"
+                placeholder="Recipient address"
+                className="w-full p-2 mb-4 bg-gray-700 rounded border border-gray-600 text-white"
               />
-            </div>
-            {transferError && (
-              <p className="text-red-500 text-sm mb-4">{transferError}</p>
-            )}
-            <div className="flex justify-end gap-4">
-              <button
-                onClick={() => setShowTransferModal(false)}
-                className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleTransfer}
-                disabled={isTransferring || !transferAddress}
-                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-500 disabled:bg-gray-600"
-              >
-                {isTransferring ? 'Transferring...' : 'Transfer'}
-              </button>
-            </div>
-          </>
-        )}
+              
+              {transferError && (
+                <div className="text-red-400 mb-4">
+                  {transferError}
+                </div>
+              )}
+              
+              <div className="flex justify-end space-x-4">
+                <button
+                  onClick={() => setShowTransferModal(false)}
+                  className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleTransfer}
+                  disabled={isTransferring || !transferAddress}
+                  className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-50"
+                >
+                  {isTransferring ? 'Transferring...' : 'Transfer'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full text-center">
+          <div className="animate-spin text-blue-400 text-5xl mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold mb-4">Loading Token</h2>
+          <p className="text-gray-400 mb-6">
+            Please wait while we fetch the token information...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (invalidTokenId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full text-center">
+          <div className="text-yellow-400 text-5xl mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold mb-4">Invalid Token ID</h2>
+          <p className="text-gray-400 mb-6">
+            {invalidTokenId}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !token) {
+    console.log('Rendering error state for token not found');
+    // Redirect to token/not-found page
+    navigate('/token/not-found', { replace: true });
+    
+    // Return null to prevent rendering anything while redirecting
+    return null;
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-gray-800 rounded-lg">
-      <button 
-        onClick={onBack}
-        className="mb-4 text-gray-400 hover:text-white"
-      >
-        ← Back to list
-      </button>
+    <div>
       
-      <div className="flex gap-6">
-        <img 
-          src={token.image} 
-          alt={token.name} 
-          className="w-64 h-64 object-cover rounded-lg"
-        />
-        
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold mb-2">{token.name}</h1>
-          <p className="text-gray-400 mb-4">{token.symbol}</p>
-          <p className="mb-6">{token.description}</p>
-          
-          <div className="space-y-2 mb-6">
-            <div className="flex justify-between">
-              <span>Current Price:</span>
-              <span className="font-bold">{token.currentPrice} SOL</span>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Token Info */}
+        <div className="md:col-span-1">
+          <div className="bg-gray-800 rounded-lg p-6">
+            <img 
+              src={token.image} 
+              alt={token.name} 
+              className="w-full h-64 object-cover rounded-lg mb-4"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Image+Error';
+              }}
+            />
+            <h1 className="text-2xl font-bold mb-2">{token.name}</h1>
+            <p className="text-gray-400 mb-4">{token.symbol}</p>
+            <p className="mb-6">{token.description}</p>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <p className="text-gray-400">Current Price</p>
+                <p className="text-xl font-bold">{token.currentPrice} SOL</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Next Price</p>
+                <p className="text-xl font-bold">{token.nextPrice} SOL</p>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Next Price:</span>
-              <span className="font-bold">{token.nextPrice} SOL</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Current Holder:</span>
-              <span 
-                className="font-mono cursor-pointer text-blue-400 hover:text-blue-300"
-                onClick={() => onViewProfile(token.currentHolder)}
+            
+            <div className="mb-4">
+              <p className="text-gray-400 mb-1">Current Holder</p>
+              <button 
+                onClick={() => handleViewProfile(token.currentHolder)}
+                className="text-blue-400 hover:underline"
               >
                 {formatAddress(token.currentHolder)}
-              </span>
+              </button>
             </div>
+            
+            <div className="mb-4">
+              <p className="text-gray-400 mb-1">Minter</p>
+              <button 
+                onClick={() => handleViewProfile(token.minter)}
+                className="text-blue-400 hover:underline"
+              >
+                {formatAddress(token.minter)}
+              </button>
+            </div>
+            
+            {token.pubkey && (
+              <div className="mb-4">
+                <p className="text-gray-400 mb-1">Token Address</p>
+                <a 
+                  href={`https://explorer.solana.com/address/${token.pubkey}?cluster=devnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:underline"
+                >
+                  {formatAddress(token.pubkey)}
+                </a>
+              </div>
+            )}
           </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <input
-                type="number"
-                value={stealAmount}
-                onChange={(e) => setStealAmount(Number(e.target.value))}
-                min={token.currentPrice}
-                step={0.1}
-                className="w-full p-2 bg-gray-700 rounded border border-gray-600 text-white"
-                disabled={isOwner}
-              />
-              <span className={isOwner ? "text-gray-500" : ""}>SOL</span>
-            </div>
+        </div>
+        
+        {/* Transaction History */}
+        <div className="md:col-span-2">
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-bold mb-4">Transaction History ({transactionCount})</h2>
             
-            <p className="text-sm text-gray-400">
-              Transaction requires an additional ~0.001 SOL for fees
-            </p>
-            
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            
-            <button 
-              className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-gray-600"
-              onClick={handleSteal}
-              disabled={isLoading || !publicKey || stealAmount < token.currentPrice || isOwner}
-            >
-              {isOwner ? (
-                "You own this token"
-              ) : isLoading ? (
-                <div className="flex items-center justify-center">
-                  <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Stealing...
-                </div>
-              ) : (
-                `Buy for ${stealAmount} SOL`
-              )}
-            </button>
+            {transactions.length === 0 ? (
+              <p className="text-gray-400">No transactions found</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-700">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">From</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">To</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Explorer</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {transactions.map((tx: Transaction) => (
+                      <tr key={tx.id} className="hover:bg-gray-700">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            tx.type === 'steal' ? 'bg-red-900 text-red-200' : 
+                            tx.type === 'transfer' ? 'bg-blue-900 text-blue-200' : 
+                            'bg-green-900 text-green-200'
+                          }`}>
+                            {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button 
+                            onClick={() => handleViewProfile(tx.fromAddress)}
+                            className="text-blue-400 hover:underline"
+                          >
+                            {formatAddress(tx.fromAddress)}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button 
+                            onClick={() => handleViewProfile(tx.toAddress)}
+                            className="text-blue-400 hover:underline"
+                          >
+                            {formatAddress(tx.toAddress)}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {tx.amount ? `${tx.amount} SOL` : '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {formatDate(tx.timestamp)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <a 
+                            href={`https://solscan.io/tx/${tx.id}?cluster=devnet`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400 hover:text-blue-300 flex items-center"
+                            title="View on Solscan"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                            Solscan
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </div>
-
+      
+      {/* Action buttons and modals would go here */}
       {isOwner && (
         <button 
           onClick={() => setShowTransferModal(true)}
@@ -572,67 +556,18 @@ export const TokenPage = ({ tokenId, onBack, onViewProfile }: TokenPageProps) =>
         </button>
       )}
 
-      {showTransferModal && <TransferModal />}
+      {/* Add Steal Token button for users who don't own the token */}
+      {!isOwner && publicKey && (
+        <button 
+          onClick={handleSteal}
+          disabled={transferInProgress}
+          className="w-full mt-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors disabled:bg-red-800 disabled:opacity-50"
+        >
+          {transferInProgress ? 'Transaction in progress...' : `Steal Token for ${stealAmount} SOL`}
+        </button>
+      )}
 
-      <div className="mt-8">
-        <h2 className="text-xl font-bold mb-4">Transaction History</h2>
-        {loadingHistory ? (
-          <div className="flex justify-center p-4">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-          </div>
-        ) : transactions.length === 0 ? (
-          <p className="text-gray-400">No transaction history available</p>
-        ) : (
-          <div className="space-y-2">
-            {transactions.map((tx) => (
-              <div 
-                key={tx.signature} 
-                className="bg-gray-700 p-4 rounded-lg"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`text-sm px-2 py-1 rounded ${
-                    tx.type === 'steal' ? 'bg-red-900 text-red-200' : 
-                    tx.type === 'transfer' ? 'bg-blue-900 text-blue-200' :
-                    'bg-green-900 text-green-200'
-                  }`}>
-                    {tx.type === 'create' ? 'Create' : tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
-                  </span>
-                  <span className="text-sm text-gray-400">
-                    {new Date(tx.timestamp * 1000).toLocaleString()}
-                  </span>
-                </div>
-                <div className="text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">From:</span>
-                    <span>{formatAddress(tx.from)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">To:</span>
-                    <span>{formatAddress(tx.to)}</span>
-                  </div>
-                  {tx.amount !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Amount:</span>
-                      <span>{(tx.amount).toFixed(4)} SOL</span>
-                    </div>
-                  )}
-                </div>
-                <a 
-                  href={`https://solscan.io/tx/${tx.signature}?cluster=devnet`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-400 hover:text-blue-300 mt-2 block"
-                >
-                  View on Solscan
-                </a>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {showTransferModal && <TransferModal />}
     </div>
   );
 }; 
