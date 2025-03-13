@@ -185,7 +185,12 @@ async function populateTransactionsTable() {
       // Insert transactions into the database
       for (const transaction of transactions) {
         try {
+          // Only insert successful transactions
+          if (transaction.success) {
           await insertTransaction(transaction);
+          } else {
+            console.log(`Skipping failed transaction ${transaction.id} for token ${token.id}`);
+          }
         } catch (error) {
           console.error(`Error inserting transaction ${transaction.id}:`, error);
         }

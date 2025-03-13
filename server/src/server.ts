@@ -216,7 +216,7 @@ const resolvers = {
               success,
               created_at as "createdAt"
             FROM transactions
-            WHERE token_id = $1
+            WHERE token_id = $1 AND success = true
             ORDER BY timestamp DESC
             LIMIT 50
           `,
@@ -225,7 +225,7 @@ const resolvers = {
         
         // Get transaction count
         const countQuery = {
-          text: 'SELECT COUNT(*) FROM transactions WHERE token_id = $1',
+          text: 'SELECT COUNT(*) FROM transactions WHERE token_id = $1 AND success = true',
           values: [id]
         };
         
