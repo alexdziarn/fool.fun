@@ -58,6 +58,13 @@ const typeDefs = `#graphql
     hasNextPage: Boolean!
   }
 
+  enum SortOption {
+    PRICE_ASC
+    PRICE_DESC
+    LATEST_PURCHASE
+    CREATION_DATE
+  }
+
   type Transaction {
     id: String!
     tokenId: String!
