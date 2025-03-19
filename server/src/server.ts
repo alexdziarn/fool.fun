@@ -9,12 +9,16 @@ import cors from 'cors';
 import { expressMiddleware } from '@apollo/server/express4';
 import { json } from 'body-parser';
 import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Connection, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { uploadToPinata, uploadToPinataGroup } from './pinata';
 import { Pool } from 'pg';
+import { PROGRAM_ID } from '../config/constants';
+import { fetchTransactionHistory } from '../../db/populate-transactions';
 import * as dotenv from 'dotenv';
+import { insertTransaction } from '../../db/transactions';
+import { insertToken, Token } from '../../db/tokens';
 
 dotenv.config();
 
@@ -86,6 +90,12 @@ const typeDefs = `#graphql
     transactionCount: Int!
   }
 
+  type SyncResponse {
+    success: Boolean!
+    message: String!
+    token: Token
+  }
+
   type Query {
     hello: String
     getTokenPage(page: Int!, pageSize: Int = 5): TokenPage!
@@ -104,6 +114,7 @@ const typeDefs = `#graphql
       signature: String!
       message: String!
     ): AuthResponse!
+    syncTokenFromBlockchain(tokenId: String!): SyncResponse!
   }
 `;
 
@@ -374,6 +385,179 @@ const resolvers = {
         console.error('❌ Signature verification failed:', error);
         console.error('Failed wallet:', publicKey);
         return { success: false };
+      }
+    },
+    syncTokenFromBlockchain: async (_: any, { tokenId }: { tokenId: string }) => {
+      const client = await pool.connect();
+      try {
+        console.log('Syncing token to database...');
+        console.log('tokenId', tokenId);
+
+        // Connect to Solana network
+        const connection = new Connection(clusterApiUrl('devnet'));
+        
+        // Check if token exists on blockchain
+        try {
+          console.log('Fetching program accounts...');
+          // Get all accounts owned by the program
+          let account: any;
+          for (let i = 0; i < 15; i++) {
+            const allAccounts = await connection.getProgramAccounts(PROGRAM_ID);
+            console.log('All accounts:', allAccounts.length);
+
+            // Find the account that matches our token ID
+            account = allAccounts.find(acc => {
+              return acc.pubkey.toString() === tokenId;
+            });
+            
+            if (!account) {
+              console.log('No account found for token ID:', tokenId);
+              if (i === 14) {
+                return {
+                  success: false,
+                  message: 'Token not found on blockchain',
+                  token: null
+                };
+              } else {
+                console.log(`Retrying ${i + 1}...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            } else {
+              break;
+            }
+          }
+
+          const data = account.account.data;
+
+          // Parse account data
+          let offset = 8; // Skip discriminator
+        
+          // Helper to read string
+          const readString = () => {
+            try {
+              const len = data.readUInt32LE(offset);
+              
+              // Validate string length to avoid buffer overruns
+              if (len > data.length - offset - 4) {
+                throw new Error(`Invalid string length ${len} at offset ${offset}, data length ${data.length}`);
+              }
+              
+              offset += 4;
+              const str = data.slice(offset, offset + len).toString();
+              offset += len;
+              return str;
+            } catch (err) {
+              console.error(`Error reading string at offset ${offset}:`, err);
+              throw err;
+            }
+          };
+          
+          // Parse token data with detailed error handling
+          
+          const name = readString(); 
+          const symbol = readString();    
+          const description = readString();
+          const image = readString();
+
+          if (offset + 32 > data.length) {
+            throw new Error(`Not enough data for currentHolder: offset ${offset}, data length ${data.length}`);
+          }
+          const currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
+          offset += 32;
+          
+          if (offset + 32 > data.length) {
+            throw new Error(`Not enough data for minter: offset ${offset}, data length ${data.length}`);
+          }
+          const minter = new PublicKey(data.slice(offset, offset + 32)).toString();
+          offset += 64; // skip minter and dev
+
+          if (offset + 8 > data.length) {
+            throw new Error(`Not enough data for currentPrice: offset ${offset}, data length ${data.length}`);
+          }
+          const currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+          offset += 8;
+
+          if (offset + 8 > data.length) {
+            throw new Error(`Not enough data for nextPrice: offset ${offset}, data length ${data.length}`);
+          }
+          const nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+          offset += 8;
+
+        
+          // Log successful parsing
+          console.log(`Successfully parsed token: ${name} (${symbol}), ID: ${account.pubkey.toString()}`);
+
+          const tokenData: Token = {
+            id: tokenId,
+            name,
+            symbol,
+            description,
+            image,
+            current_holder: currentHolder,
+            minter,
+            current_price: currentPrice,
+            next_price: nextPrice,
+            pubkey: tokenId,
+            created_at: new Date()
+          };
+
+          console.log('tokenData', tokenData);
+
+          // Insert token into database
+          await insertToken(tokenData);
+
+          console.log('Fetching transaction history...');
+          // get transaction history
+          let transactions: any[] = [];
+
+          // fetch transaction history until we get some, do this 15 times waiting 1 second between each try
+          for (let i = 0; i < 15; i++) {
+            transactions = await fetchTransactionHistory(tokenId);
+            if (transactions.length > 0) {
+              break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log(`Retrying ${i + 1}...`);
+          }
+          
+          // Insert transactions into the database
+          for (const transaction of transactions) {
+            try {
+              // Only insert successful transactions
+              if (transaction.success) {
+              await insertTransaction(transaction);
+              } else {
+                console.log(`Skipping failed transaction ${transaction.id} for token ${tokenId}`);
+              }
+            } catch (error) {
+              console.error(`Error inserting transaction ${transaction.id}:`, error);
+            }
+          }
+
+          console.log('Transaction history fetched and inserted into database');
+
+          return {
+            success: true,
+            message: 'Token successfully synced from blockchain',
+            token: tokenId
+          };
+        } catch (error) {
+          console.error('Error checking token on blockchain:', error);
+          return {
+            success: false,
+            message: 'Error checking token on blockchain',
+            token: null
+          };
+        }
+      } catch (error) {
+        console.error('Error syncing token:', error);
+        return {
+          success: false,
+          message: 'Error syncing token',
+          token: null
+        };
+      } finally {
+        client.release();
       }
     }
   }

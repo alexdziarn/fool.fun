@@ -24,16 +24,15 @@ async function getAllTokens() {
 
 /**
  * Fetches transaction history for a token
- * @param tokenPubkey The token's public key
  * @param tokenId The token's ID in the database
  */
-async function fetchTransactionHistory(tokenPubkey: string, tokenId: string) {
+export async function fetchTransactionHistory(tokenId: string) {
   try {
-    console.log(`Fetching transaction history for token ${tokenId} (${tokenPubkey})`);
+    console.log(`Fetching transaction history for token ${tokenId}`);
     const connection = new Connection(clusterApiUrl('devnet'));
     
     // Convert string to PublicKey
-    const tokenPDA = new PublicKey(tokenPubkey);
+    const tokenPDA = new PublicKey(tokenId);
     
     // 1. Get all signatures for the token
     const signatures = await connection.getSignaturesForAddress(tokenPDA);
@@ -180,7 +179,7 @@ async function populateTransactionsTable() {
       }
       
       // Fetch transaction history
-      const transactions = await fetchTransactionHistory(token.pubkey, token.id);
+      const transactions = await fetchTransactionHistory(token.id);
       
       // Insert transactions into the database
       for (const transaction of transactions) {
