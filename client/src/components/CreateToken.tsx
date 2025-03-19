@@ -16,9 +16,9 @@ import { IDL } from '../idl/steal_token';
 import { PROGRAM_ID, DEV_WALLET } from '../config/constants';
 import { useNavigate } from 'react-router-dom';
 
-const UPLOAD_FILE = gql`
-  mutation UploadFile($file: Upload!) {
-    uploadFile(file: $file) {
+const UPLOAD_FILE_TO_TEMP_GROUP = gql`
+  mutation UploadFileToTempGroup($file: Upload!) {
+    uploadFileToTempGroup(file: $file) {
       url
     }
   }
@@ -66,7 +66,7 @@ interface CreateTokenProps {
 const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
   const navigate = useNavigate();
   const { publicKey, sendTransaction } = useWallet();
-  const [uploadFile] = useMutation(UPLOAD_FILE);
+  const [uploadFileToTempGroup] = useMutation(UPLOAD_FILE_TO_TEMP_GROUP);
   const [isOpen, setIsOpen] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [formData, setFormData] = useState<CreateTokenForm>({
@@ -158,10 +158,12 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
     }
 
     try {
-      // First upload image
-      console.log('Uploading file...');
-      const { data } = await uploadFile({
-        variables: { file: fileToUpload },
+      // First upload image to temp group
+      console.log('Uploading file to temp group...');
+      const { data } = await uploadFileToTempGroup({
+        variables: { 
+          file: fileToUpload,
+        },
         context: {
           headers: {
             'Apollo-Require-Preflight': 'true',
@@ -169,11 +171,11 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
         }
       });
 
-      if (!data?.uploadFile?.url) {
+      if (!data?.uploadFileToTempGroup?.url) {
         throw new Error('Failed to upload image');
       }
 
-      console.log('Upload successful:', data.uploadFile.url);
+      console.log('Upload successful:', data.uploadFileToTempGroup.url);
 
       console.log('Creating token...');
 
@@ -214,7 +216,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
           ...serializeString(formData.name),
           ...serializeString(formData.ticker),
           ...serializeString(formData.description),
-          ...serializeString(data.uploadFile.url || ''),
+          ...serializeString(data.uploadFileToTempGroup.url || ''),
           ...serializeU64(BigInt(Math.floor(formData.initialPrice * LAMPORTS_PER_SOL))),
           ...serializeU64(BigInt(formData.priceIncrement)),
           ...Buffer.from([bump]),  // Use the actual bump

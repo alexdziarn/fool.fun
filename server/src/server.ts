@@ -12,7 +12,7 @@ import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import { uploadToPinata } from './pinata';
+import { uploadToPinata, uploadToPinataGroup } from './pinata';
 import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 
@@ -98,6 +98,7 @@ const typeDefs = `#graphql
 
   type Mutation {
     uploadFile(file: Upload!): File!
+    uploadFileToTempGroup(file: Upload!): File!
     verifySignature(
       publicKey: String!
       signature: String!
@@ -313,6 +314,39 @@ const resolvers = {
       } catch (error) {
         console.error('Upload error:', error);
         throw new GraphQLError('File upload failed', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      }
+    },
+    uploadFileToTempGroup: async (_: any, { file }: { file: Promise<FileUpload> }) => {
+      console.log('uploadFileToTempGroup', file);
+      try {
+        const { createReadStream, filename, mimetype } = await file;
+        
+        // Validate file type
+        if (!mimetype.startsWith('image/')) {
+          throw new GraphQLError('Only image files are allowed', {
+            extensions: { code: 'BAD_USER_INPUT' }
+          });
+        }
+
+        // Convert stream to buffer
+        const stream = createReadStream();
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(chunk as Buffer);
+        }
+        const buffer = Buffer.concat(chunks);
+
+        // Upload to Pinata group
+        console.log('Uploading file to Pinata group...');
+        const url = await uploadToPinataGroup(buffer, filename, process.env.PINATA_TEMP_GROUP_ID || '');
+        console.log('File uploaded successfully to IPFS group:', url);
+
+        return { url };
+      } catch (error) {
+        console.error('Group upload error:', error);
+        throw new GraphQLError('File upload to temp group failed', {
           extensions: { code: 'INTERNAL_SERVER_ERROR' }
         });
       }
