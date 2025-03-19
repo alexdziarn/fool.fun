@@ -1,7 +1,8 @@
-import pool, { closePool } from './pool';
+import { closePool } from './pool';
 import { createTokenTableIfNotExists } from './tokens';
 import { createTransactionTableIfNotExists } from './transactions';
 import { spawn } from 'child_process';
+import path from 'path';  
 
 /**
  * Runs a script using ts-node
@@ -45,47 +46,23 @@ async function main() {
     
     // Run populate-tokens script
     console.log("Populating tokens table...");
-    await runScript('db/populate-tokens.ts');
+    await runScript(path.join(__dirname, 'populate-tokens.ts'));
     
     // Run populate-transactions script
     console.log("Populating transactions table...");
-    await runScript('db/populate-transactions.ts');
+    await runScript(path.join(__dirname, 'populate-transactions.ts'));
     
-    console.log("Database setup and population complete");
-    
-    // Safely close the pool
-    await closePool();
-    
-    return 0; // Success exit code
+    console.log("Database population completed successfully");
   } catch (error) {
     console.error("Error in main function:", error);
-    
-    // Try to safely close the pool even on error
-    try {
-      await closePool();
-    } catch (poolError) {
-      console.error("Error closing database connection:", poolError);
-    }
-    
-    return 1; // Error exit code
+    process.exit(1);
+  } finally {
+    await closePool();
   }
 }
 
-// Run the main function if this file is executed directly
-if (require.main === module) {
-  main()
-    .then((exitCode) => {
-      console.log("Script completed successfully");
-      // Use setTimeout to allow any pending operations to complete
-      setTimeout(() => {
-        process.exit(exitCode);
-      }, 100);
-    })
-    .catch(error => {
-      console.error("Script failed:", error);
-      // Use setTimeout to allow any pending operations to complete
-      setTimeout(() => {
-        process.exit(1);
-      }, 100);
-    });
-}
+// Run the main function
+main().catch(error => {
+  console.error("Script completed with error:", error);
+  process.exit(1);
+});

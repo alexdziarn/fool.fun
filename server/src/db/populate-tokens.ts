@@ -1,7 +1,8 @@
 import { clusterApiUrl, LAMPORTS_PER_SOL, Connection, PublicKey } from "@solana/web3.js";
-import { PROGRAM_ID } from "../config/constants";
-import pool, { closePool } from './pool';
-import { Token, insertToken, createTokenTableIfNotExists, getTopTokensByPrice } from './tokens';
+import { PROGRAM_ID } from "../constants";
+import { closePool } from './pool';
+import { insertToken, createTokenTableIfNotExists, getTopTokensByPrice } from './tokens';
+import { Token } from '../types';
 
 /**
  * Interface for token data from the blockchain

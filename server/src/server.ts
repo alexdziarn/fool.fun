@@ -13,12 +13,13 @@ import { PublicKey, Connection, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { uploadToPinata, uploadToPinataGroup } from './pinata';
-import { Pool } from 'pg';
-import { PROGRAM_ID } from '../config/constants';
-import { fetchTransactionHistory } from '../db/populate-transactions';
+import { PROGRAM_ID } from './constants';
+import { fetchTransactionHistory } from './db/populate-transactions';
 import * as dotenv from 'dotenv';
-import { insertTransaction } from '../db/transactions';
-import { insertToken, Token } from '../db/tokens';
+import { insertToken } from './db/tokens';
+import { getPool } from './db/pool';
+import { Token } from './types';
+import { insertTransaction } from './db/transactions';
 
 dotenv.config();
 
@@ -26,13 +27,7 @@ dotenv.config();
 // const storage = getStorage(firebaseApp);
 
 // Configure PostgreSQL connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'tokens_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres'
-});
+const pool = getPool();
 
 // Define TypeDefs
 const typeDefs = `#graphql

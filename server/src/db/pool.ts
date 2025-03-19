@@ -4,41 +4,45 @@ import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
-// Configure PostgreSQL connection
-const pool = new Pool({
+// Default configuration
+const defaultConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'tokens_db',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres'
-});
+};
 
-// Track if the pool is being drained
-let isDraining = false;
+// Create a singleton pool instance
+let pool: Pool | null = null;
+
+/**
+ * Get a database pool instance. If one doesn't exist, it will be created.
+ * This ensures we're using a single pool across the application.
+ */
+export function getPool(): Pool {
+  if (!pool) {
+    pool = new Pool(defaultConfig);
+  }
+  return pool;
+}
 
 /**
  * Safely close the database pool
  * This ensures all clients are properly released before ending the pool
  */
-async function closePool(): Promise<void> {
-  // Prevent multiple drain attempts
-  if (isDraining) {
-    console.log('Pool is already being drained');
+export async function closePool(): Promise<void> {
+  if (!pool) {
     return;
   }
   
-  isDraining = true;
-  console.log('Safely closing database pool...');
-  
   try {
-    // End the pool - this waits for all clients to be released
     await pool.end();
+    pool = null;
     console.log('Database pool closed successfully');
   } catch (error) {
     console.error('Error closing database pool:', error);
     throw error;
-  } finally {
-    isDraining = false;
   }
 }
 
@@ -53,7 +57,3 @@ process.on('SIGINT', async () => {
     process.exit(1);
   }
 });
-
-// Export the pool and the closePool function
-export default pool;
-export { closePool };

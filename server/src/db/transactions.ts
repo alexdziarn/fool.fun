@@ -1,34 +1,14 @@
-import pool, { closePool } from './pool';
+import { getPool, closePool } from './pool';
+import { Transaction, TransactionType } from '../types';
 
 // Define the table name
 const TRANSACTION_TABLE = "transactions";
-
-// Transaction types
-export enum TransactionType {
-  STEAL = 'steal',
-  TRANSFER = 'transfer',
-  CREATE = 'create'
-}
-
-// Transaction interface
-export interface Transaction {
-  id: string;                   // Transaction signature
-  token_id: string;             // Token ID
-  type: TransactionType;        // Transaction type
-  from_address: string;         // Sender address
-  to_address: string;           // Recipient address
-  amount: number | null;        // Amount in SOL (null for non-monetary transactions)
-  timestamp: Date;              // Transaction timestamp
-  block_number: number | null;  // Block number
-  slot: number | null;          // Slot number
-  fee: number | null;           // Transaction fee
-  success: boolean;             // Transaction success status
-}
 
 /**
  * Creates the transactions table if it doesn't exist
  */
 export async function createTransactionTableIfNotExists() {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     await client.query(`
@@ -83,6 +63,7 @@ export async function createTransactionTableIfNotExists() {
  * @param transaction Transaction data to insert
  */
 export async function insertTransaction(transaction: Transaction) {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     const query = `
@@ -124,6 +105,7 @@ export async function insertTransaction(transaction: Transaction) {
  * @param offset Offset for pagination
  */
 export async function getTransactionsByTokenId(tokenId: string, limit = 20, offset = 0) {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     const query = `
@@ -148,6 +130,7 @@ export async function getTransactionsByTokenId(tokenId: string, limit = 20, offs
  * @param tokenId Token ID to get transaction count for
  */
 export async function getTransactionCountByTokenId(tokenId: string) {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     const query = `
@@ -172,6 +155,7 @@ export async function getTransactionCountByTokenId(tokenId: string) {
  * @param offset Offset for pagination
  */
 export async function getTransactionsByAddress(address: string, limit = 20, offset = 0) {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     const query = `

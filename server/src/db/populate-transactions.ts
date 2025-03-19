@@ -1,7 +1,8 @@
 import { clusterApiUrl, Connection, PublicKey, ParsedTransactionWithMeta, ParsedInstruction } from "@solana/web3.js";
-import { PROGRAM_ID } from "../config/constants";
-import pool, { closePool } from './pool';
-import { Transaction, TransactionType, insertTransaction } from './transactions';
+import { PROGRAM_ID } from "../constants";
+import { getPool, closePool } from './pool';
+import { insertTransaction } from './transactions';
+import { Transaction, TransactionType } from '../types';
 
 // Define the table name
 const TOKEN_TABLE = "tokens";
@@ -10,7 +11,7 @@ const TOKEN_TABLE = "tokens";
  * Fetches all tokens from the database
  */
 async function getAllTokens() {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const result = await client.query(`SELECT * FROM ${TOKEN_TABLE}`);
     return result.rows;

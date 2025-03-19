@@ -1,28 +1,15 @@
-import pool, { closePool } from './pool';
+import { getPool, closePool } from './pool';
 import { PublicKey } from '@solana/web3.js';
+import { Token } from '../types';
 
 // Define the table name
 const TOKEN_TABLE = "tokens";
-
-// Token interface
-export interface Token {
-  id: string;                   // Token ID (public key as string)
-  name: string;                 // Token name
-  symbol: string;               // Token symbol
-  description: string;          // Token description
-  image: string;                // Token image URL
-  current_holder: string;       // Current token holder address
-  minter: string;               // Token minter address
-  current_price: number;        // Current token price in SOL
-  next_price: number;           // Next token price in SOL
-  pubkey: string;               // Token public key
-  created_at?: Date;            // Token creation timestamp
-}
 
 /**
  * Creates the tokens table if it doesn't exist
  */
 export async function createTokenTableIfNotExists() {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     await client.query(`
@@ -72,7 +59,7 @@ export async function createTokenTableIfNotExists() {
  * @param token Token data to insert
  */
 export async function insertToken(token: Token) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       INSERT INTO ${TOKEN_TABLE}
@@ -118,7 +105,7 @@ export async function insertToken(token: Token) {
  * @param tokenId Token ID to get
  */
 export async function getTokenById(tokenId: string) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       SELECT * FROM ${TOKEN_TABLE}
@@ -141,7 +128,7 @@ export async function getTokenById(tokenId: string) {
  * @param offset Offset for pagination
  */
 export async function getTokens(limit = 20, offset = 0) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       SELECT * FROM ${TOKEN_TABLE}
@@ -163,7 +150,7 @@ export async function getTokens(limit = 20, offset = 0) {
  * Gets the total count of tokens
  */
 export async function getTokenCount() {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       SELECT COUNT(*) as count FROM ${TOKEN_TABLE}
@@ -186,7 +173,7 @@ export async function getTokenCount() {
  * @param offset Offset for pagination
  */
 export async function getTokensByHolder(holderAddress: string, limit = 20, offset = 0) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       SELECT * FROM ${TOKEN_TABLE}
@@ -212,7 +199,7 @@ export async function getTokensByHolder(holderAddress: string, limit = 20, offse
  * @param offset Offset for pagination
  */
 export async function getTokensByMinter(minterAddress: string, limit = 20, offset = 0) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       SELECT * FROM ${TOKEN_TABLE}
@@ -236,7 +223,7 @@ export async function getTokensByMinter(minterAddress: string, limit = 20, offse
  * @param limit Maximum number of tokens to return
  */
 export async function getTopTokensByPrice(limit = 5) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       SELECT * FROM ${TOKEN_TABLE}
@@ -262,7 +249,7 @@ export async function getTopTokensByPrice(limit = 5) {
  * @param nextPrice Next token price
  */
 export async function updateTokenHolder(tokenId: string, newHolder: string, newPrice: number, nextPrice: number) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const query = `
       UPDATE ${TOKEN_TABLE}

@@ -1,8 +1,9 @@
-import pool from './pool';
+import { getPool } from './pool';
 
 async function createScannerStateTable() {
   try {
-    await pool.query(`
+    const client = await getPool().connect();
+    await client.query(`
       CREATE TABLE IF NOT EXISTS scanner_state (
         scanner_name VARCHAR(50) PRIMARY KEY,
         last_processed_slot BIGINT NOT NULL,
