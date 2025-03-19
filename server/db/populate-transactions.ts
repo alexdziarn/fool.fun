@@ -1,5 +1,5 @@
 import { clusterApiUrl, Connection, PublicKey, ParsedTransactionWithMeta, ParsedInstruction } from "@solana/web3.js";
-import { PROGRAM_ID } from "./config/constants";
+import { PROGRAM_ID } from "../config/constants";
 import pool, { closePool } from './pool';
 import { Transaction, TransactionType, insertTransaction } from './transactions';
 

@@ -7,6 +7,7 @@
     "@aws-sdk/client-dynamodb": "^3.751.0",
     "@aws-sdk/lib-dynamodb": "^3.751.0",
     "@google-cloud/storage": "^7.15.1",
+    "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
@@ -124,7 +125,16 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "ts-node src/server.ts"
+    "start": "ts-node src/server.ts",
+    "populate": "ts-node db/populate.ts",
+    "populate-tokens": "ts-node db/populate-tokens.ts",
+    "debug-tokens": "ts-node db/populate-tokens.ts --debug --limit 3",
+    "create-token-table": "ts-node db/tokens.ts",
+    "create-transaction-table": "ts-node db/transactions.ts",
+    "populate-transactions": "ts-node db/populate-transactions.ts",
+    "setup-all": "ts-node db/tokens.ts && ts-node db/transactions.ts && ts-node db/populate-tokens.ts && ts-node db/populate-transactions.ts",
+    "create-scanner-state": "ts-node db/scanner-state.ts",
+    "scanner": "ts-node scanners/ScannerService.ts"
   },
   "author": "",
   "license": "ISC",

@@ -270,7 +270,7 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
-        data: Buffer.from([2]) // 2 = transfer instruction
+        data: Buffer.from([163, 52, 200, 231, 140, 3, 69, 186]) // transfer instruction discriminator from IDL
       });
       
       const transaction = new SolanaTransaction();

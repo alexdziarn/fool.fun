@@ -45,11 +45,11 @@ async function main() {
     
     // Run populate-tokens script
     console.log("Populating tokens table...");
-    await runScript('./populate-tokens.ts');
+    await runScript('db/populate-tokens.ts');
     
     // Run populate-transactions script
     console.log("Populating transactions table...");
-    await runScript('./populate-transactions.ts');
+    await runScript('db/populate-transactions.ts');
     
     console.log("Database setup and population complete");
     

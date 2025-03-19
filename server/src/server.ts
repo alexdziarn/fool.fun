@@ -15,10 +15,10 @@ import nacl from 'tweetnacl';
 import { uploadToPinata, uploadToPinataGroup } from './pinata';
 import { Pool } from 'pg';
 import { PROGRAM_ID } from '../config/constants';
-import { fetchTransactionHistory } from '../../db/populate-transactions';
+import { fetchTransactionHistory } from '../db/populate-transactions';
 import * as dotenv from 'dotenv';
-import { insertTransaction } from '../../db/transactions';
-import { insertToken, Token } from '../../db/tokens';
+import { insertTransaction } from '../db/transactions';
+import { insertToken, Token } from '../db/tokens';
 
 dotenv.config();
 
@@ -100,6 +100,8 @@ const typeDefs = `#graphql
     hello: String
     getTokenPage(page: Int!, pageSize: Int = 5): TokenPage!
     getTokenById(id: String!): TokenWithTransactions
+    getTokensByHolder(address: String!): [Token!]!
+    getTokensByMinter(address: String!): [Token!]!
   }
 
   type AuthResponse {
@@ -287,6 +289,76 @@ const resolvers = {
       } catch (error) {
         console.error('Error fetching token by ID:', error);
         throw new GraphQLError('Failed to fetch token', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      } finally {
+        client.release();
+      }
+    },
+    getTokensByHolder: async (_: any, { address }: { address: string }) => {
+      const client = await pool.connect();
+      try {
+        const query = {
+          text: `
+            SELECT 
+              id, 
+              name, 
+              symbol, 
+              description, 
+              image, 
+              current_holder as "currentHolder", 
+              minter, 
+              current_price as "currentPrice", 
+              next_price as "nextPrice", 
+              pubkey,
+              created_at as "createdAt"
+            FROM tokens
+            WHERE current_holder = $1
+            ORDER BY created_at DESC
+          `,
+          values: [address]
+        };
+        
+        const result = await client.query(query);
+        return result.rows;
+      } catch (error) {
+        console.error('Error fetching tokens by holder:', error);
+        throw new GraphQLError('Failed to fetch tokens by holder', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      } finally {
+        client.release();
+      }
+    },
+    getTokensByMinter: async (_: any, { address }: { address: string }) => {
+      const client = await pool.connect();
+      try {
+        const query = {
+          text: `
+            SELECT 
+              id, 
+              name, 
+              symbol, 
+              description, 
+              image, 
+              current_holder as "currentHolder", 
+              minter, 
+              current_price as "currentPrice", 
+              next_price as "nextPrice", 
+              pubkey,
+              created_at as "createdAt"
+            FROM tokens
+            WHERE minter = $1
+            ORDER BY created_at DESC
+          `,
+          values: [address]
+        };
+        
+        const result = await client.query(query);
+        return result.rows;
+      } catch (error) {
+        console.error('Error fetching tokens by minter:', error);
+        throw new GraphQLError('Failed to fetch tokens by minter', {
           extensions: { code: 'INTERNAL_SERVER_ERROR' }
         });
       } finally {

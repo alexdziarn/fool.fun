@@ -1,5 +1,5 @@
 import { clusterApiUrl, LAMPORTS_PER_SOL, Connection, PublicKey } from "@solana/web3.js";
-import { PROGRAM_ID } from "./config/constants";
+import { PROGRAM_ID } from "../config/constants";
 import pool, { closePool } from './pool';
 import { Token, insertToken, createTokenTableIfNotExists, getTopTokensByPrice } from './tokens';
 
