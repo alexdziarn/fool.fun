@@ -189,26 +189,44 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
         PROGRAM_ID
       );
       
-      // Create the instruction
-      const instruction = new TransactionInstruction({
+      // Create the steal instruction
+      const paymentAmount = token.currentPrice * LAMPORTS_PER_SOL;
+      const stealInstruction = new TransactionInstruction({
         keys: [
           { pubkey: tokenPDA, isSigner: false, isWritable: true },
           { pubkey: publicKey, isSigner: true, isWritable: true },
           { pubkey: new PublicKey(token.currentHolder), isSigner: false, isWritable: true },
+          { pubkey: new PublicKey('8BcW6T4Sm3tMtE9LJET1oU1vQec6m9R8LifnauQwshCi'), isSigner: false, isWritable: true }, // dev account
+          { pubkey: new PublicKey(token.minter), isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
-        data: Buffer.from([1]) // 1 = steal instruction
+        data: Buffer.concat([
+          Buffer.from([106, 222, 218, 118, 8, 131, 144, 221]), // steal instruction discriminator
+          Buffer.from(new Uint8Array(new BigUint64Array([BigInt(paymentAmount)]).buffer)) // amount in lamports
+        ])
       });
       
       const transaction = new SolanaTransaction();
-      transaction.add(instruction);
+      
+      // Get the latest blockhash
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+      transaction.feePayer = publicKey;
+      
+      // Add instruction
+      transaction.add(stealInstruction);
       
       // Send the transaction
       const signature = await sendTransaction(transaction, connection);
       
       // Wait for confirmation
-      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      const confirmation = await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight
+      });
       
       if (confirmation.value.err) {
         throw new Error('Transaction failed');
