@@ -18,7 +18,6 @@ interface BlockchainToken {
   nextPrice: number;
   pubkey: string;
   id: string;
-  createdAt?: number;
 }
 
 /**
@@ -44,12 +43,143 @@ function dumpAccountData(data: Buffer, maxBytes = 100): string {
   return result;
 }
 
+export async function getData(account: { account: { data: any; }; pubkey: { toString: () => any; }; }): Promise<Token | null> {
+  // Parse token data with detailed error handling
+  let name, symbol, description, image, currentHolder, minter, currentPrice, nextPrice;
+    
+  try {
+    const data = account.account.data;
+    
+    // Log raw account data for debugging
+    // console.log(`\nAccount ${account.pubkey.toString()} data:`);
+    // console.log(dumpAccountData(data));
+    
+    // Skip if not a token account (should have at least 8 bytes for discriminator)
+    if (data.length < 8) {
+      console.log(`Skipping account ${account.pubkey.toString()}: data too short (${data.length} bytes)`);
+      return null;
+    }
+    
+    // Extract discriminator for logging and debugging
+    // const discriminator = data.slice(0, 8);
+    
+    // Log the discriminator value for debugging
+    // console.log(`Token account ${account.pubkey.toString()} discriminator:`, 
+    //   Array.from(discriminator).join(', '));
+    
+    // NOTE: Removing the discriminator check as it may be filtering out valid tokens
+    // const isTokenAccount = Buffer.compare(
+    //   discriminator, 
+    //   Buffer.from([97, 122, 98, 121, 226, 200, 38, 235])
+    // ) === 0;
+    
+    // if (!isTokenAccount) continue;
+    
+    let offset = 8; // Skip discriminator
+    
+    // Helper to read string
+    const readString = () => {
+      try {
+        const len = data.readUInt32LE(offset);
+        
+        // Validate string length to avoid buffer overruns
+        if (len > data.length - offset - 4) {
+          throw new Error(`Invalid string length ${len} at offset ${offset}, data length ${data.length}`);
+        }
+        
+        offset += 4;
+        const str = data.slice(offset, offset + len).toString();
+        offset += len;
+        return str;
+      } catch (err) {
+        console.error(`Error reading string at offset ${offset}:`, err);
+        throw err;
+      }
+    };
+    
+    
+    try { name = readString(); } 
+    catch (err) { console.error(`Error reading name for token ${account.pubkey.toString()}:`, err); return null; }
+    
+    try { symbol = readString(); } 
+    catch (err) { console.error(`Error reading symbol for token ${account.pubkey.toString()}:`, err); return null; }
+    
+    try { description = readString(); } 
+    catch (err) { console.error(`Error reading description for token ${account.pubkey.toString()}:`, err); return null; }
+    
+    try { image = readString(); } 
+    catch (err) { console.error(`Error reading image for token ${account.pubkey.toString()}:`, err); return null; }
+    
+    try {
+      if (offset + 32 > data.length) {
+        throw new Error(`Not enough data for currentHolder: offset ${offset}, data length ${data.length}`);
+      }
+      currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
+      offset += 32;
+    } catch (err) {
+      console.error(`Error reading currentHolder for token ${account.pubkey.toString()}:`, err);
+      return null;
+    }
+    
+    try {
+      if (offset + 32 > data.length) {
+        throw new Error(`Not enough data for minter: offset ${offset}, data length ${data.length}`);
+      }
+      minter = new PublicKey(data.slice(offset, offset + 32)).toString();
+      offset += 64; // skip minter and dev
+    } catch (err) {
+      console.error(`Error reading minter for token ${account.pubkey.toString()}:`, err);
+      return null;
+    }
+    
+    try {
+      if (offset + 8 > data.length) {
+        throw new Error(`Not enough data for currentPrice: offset ${offset}, data length ${data.length}`);
+      }
+      currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+      offset += 8;
+    } catch (err) {
+      console.error(`Error reading currentPrice for token ${account.pubkey.toString()}:`, err);
+      return null;
+    }
+    
+    try {
+      if (offset + 8 > data.length) {
+        throw new Error(`Not enough data for nextPrice: offset ${offset}, data length ${data.length}`);
+      }
+      nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
+    } catch (err) {
+      console.error(`Error reading nextPrice for token ${account.pubkey.toString()}:`, err);
+      return null;
+    }
+    
+    // Log successful parsing
+    console.log(`Successfully parsed token: ${name} (${symbol}), ID: ${account.pubkey.toString()}`);
+    
+    
+  } catch (err) {
+    console.error(`Error parsing token account ${account.pubkey.toString()}:`, err);
+  }
+  return {
+    id: account.pubkey.toString(),
+    name,
+    symbol,
+    description,
+    image,
+    current_holder: currentHolder || '',
+    minter: minter || '',
+    current_price: currentPrice || 0,
+    next_price: nextPrice || 0,
+    pubkey: account.pubkey.toString(),
+  };
+}
+
 /**
  * Fetches token data from the blockchain
  * @param limit Optional limit on number of tokens to process
  * @param debug Whether to print debug information
  */
-async function getTokenDataFromBlockchain(limit?: number, debug = false): Promise<BlockchainToken[]> {
+async function getTokenDataFromBlockchain(limit?: number, debug = false): Promise<Token[]> {
   try {
     console.log("Fetching token data from blockchain...");
     const connection = new Connection(clusterApiUrl('devnet'));
@@ -58,138 +188,15 @@ async function getTokenDataFromBlockchain(limit?: number, debug = false): Promis
     const accounts = await connection.getProgramAccounts(PROGRAM_ID);
     console.log(`Found ${accounts.length} token accounts${limit ? `, processing up to ${limit}` : ''}`);
     
-    const tokens: BlockchainToken[] = [];
+    const tokens: Token[] = [];
     
     // Apply limit if specified
     const accountsToProcess = limit ? accounts.slice(0, limit) : accounts;
     
     for (const account of accountsToProcess) {
-      try {
-        const data = account.account.data;
-        
-        // Log raw account data for debugging
-        // console.log(`\nAccount ${account.pubkey.toString()} data:`);
-        // console.log(dumpAccountData(data));
-        
-        // Skip if not a token account (should have at least 8 bytes for discriminator)
-        if (data.length < 8) {
-          console.log(`Skipping account ${account.pubkey.toString()}: data too short (${data.length} bytes)`);
-          continue;
-        }
-        
-        // Extract discriminator for logging and debugging
-        const discriminator = data.slice(0, 8);
-        
-        // Log the discriminator value for debugging
-        // console.log(`Token account ${account.pubkey.toString()} discriminator:`, 
-        //   Array.from(discriminator).join(', '));
-        
-        // NOTE: Removing the discriminator check as it may be filtering out valid tokens
-        // const isTokenAccount = Buffer.compare(
-        //   discriminator, 
-        //   Buffer.from([97, 122, 98, 121, 226, 200, 38, 235])
-        // ) === 0;
-        
-        // if (!isTokenAccount) continue;
-        
-        let offset = 8; // Skip discriminator
-        
-        // Helper to read string
-        const readString = () => {
-          try {
-            const len = data.readUInt32LE(offset);
-            
-            // Validate string length to avoid buffer overruns
-            if (len > data.length - offset - 4) {
-              throw new Error(`Invalid string length ${len} at offset ${offset}, data length ${data.length}`);
-            }
-            
-            offset += 4;
-            const str = data.slice(offset, offset + len).toString();
-            offset += len;
-            return str;
-          } catch (err) {
-            console.error(`Error reading string at offset ${offset}:`, err);
-            throw err;
-          }
-        };
-        
-        // Parse token data with detailed error handling
-        let name, symbol, description, image, currentHolder, minter, currentPrice, nextPrice;
-        
-        try { name = readString(); } 
-        catch (err) { console.error(`Error reading name for token ${account.pubkey.toString()}:`, err); continue; }
-        
-        try { symbol = readString(); } 
-        catch (err) { console.error(`Error reading symbol for token ${account.pubkey.toString()}:`, err); continue; }
-        
-        try { description = readString(); } 
-        catch (err) { console.error(`Error reading description for token ${account.pubkey.toString()}:`, err); continue; }
-        
-        try { image = readString(); } 
-        catch (err) { console.error(`Error reading image for token ${account.pubkey.toString()}:`, err); continue; }
-        
-        try {
-          if (offset + 32 > data.length) {
-            throw new Error(`Not enough data for currentHolder: offset ${offset}, data length ${data.length}`);
-          }
-          currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
-          offset += 32;
-        } catch (err) {
-          console.error(`Error reading currentHolder for token ${account.pubkey.toString()}:`, err);
-          continue;
-        }
-        
-        try {
-          if (offset + 32 > data.length) {
-            throw new Error(`Not enough data for minter: offset ${offset}, data length ${data.length}`);
-          }
-          minter = new PublicKey(data.slice(offset, offset + 32)).toString();
-          offset += 64; // skip minter and dev
-        } catch (err) {
-          console.error(`Error reading minter for token ${account.pubkey.toString()}:`, err);
-          continue;
-        }
-        
-        try {
-          if (offset + 8 > data.length) {
-            throw new Error(`Not enough data for currentPrice: offset ${offset}, data length ${data.length}`);
-          }
-          currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
-          offset += 8;
-        } catch (err) {
-          console.error(`Error reading currentPrice for token ${account.pubkey.toString()}:`, err);
-          continue;
-        }
-        
-        try {
-          if (offset + 8 > data.length) {
-            throw new Error(`Not enough data for nextPrice: offset ${offset}, data length ${data.length}`);
-          }
-          nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
-        } catch (err) {
-          console.error(`Error reading nextPrice for token ${account.pubkey.toString()}:`, err);
-          continue;
-        }
-        
-        // Log successful parsing
-        console.log(`Successfully parsed token: ${name} (${symbol}), ID: ${account.pubkey.toString()}`);
-        
-        tokens.push({
-          id: account.pubkey.toString(),
-          name,
-          symbol,
-          description,
-          image,
-          currentHolder,
-          minter,
-          currentPrice,
-          nextPrice,
-          pubkey: account.pubkey.toString(),
-          createdAt: Date.now()
-        });
-      } catch (err) {
-        console.error(`Error parsing token account ${account.pubkey.toString()}:`, err);
+      const token = await getData(account);
+      if (token) {
+        tokens.push(token);
       }
     }
     // console.log("accounts", accounts);
@@ -212,38 +219,23 @@ async function populateTokensTable(limit?: number, debug = false) {
     await createTokenTableIfNotExists();
     
     // Fetch token data from blockchain
-    const blockchainTokens = await getTokenDataFromBlockchain(limit, debug);
+    const tokens = await getTokenDataFromBlockchain(limit, debug);
     
-    if (!blockchainTokens || blockchainTokens.length === 0) {
+    if (!tokens || tokens.length === 0) {
       console.log("No token data found on blockchain");
       return;
     }
     
-    console.log(`Found ${blockchainTokens.length} tokens to insert`);
+    console.log(`Found ${tokens.length} tokens to insert`);
     
     // Insert each token into the database
-    for (const blockchainToken of blockchainTokens) {
+    for (const token of tokens) {
       try {
-        // Convert blockchain token to database token format
-        const dbToken: Token = {
-          id: blockchainToken.id,
-          name: blockchainToken.name,
-          symbol: blockchainToken.symbol,
-          description: blockchainToken.description,
-          image: blockchainToken.image,
-          current_holder: blockchainToken.currentHolder,
-          minter: blockchainToken.minter,
-          current_price: blockchainToken.currentPrice,
-          next_price: blockchainToken.nextPrice,
-          pubkey: blockchainToken.pubkey,
-          created_at: blockchainToken.createdAt ? new Date(blockchainToken.createdAt) : new Date()
-        };
-        
         // Insert token into database
-        await insertToken(dbToken);
-        console.log(`Inserted token: ${dbToken.name} (${dbToken.id})`);
+        await insertToken(token);
+        console.log(`Inserted token: ${token.name} (${token.id})`);
       } catch (err) {
-        console.error(`Error inserting token ${blockchainToken.id}:`, err);
+        console.error(`Error inserting token ${token.id}:`, err);
       }
     }
     

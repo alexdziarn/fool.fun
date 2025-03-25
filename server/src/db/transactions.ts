@@ -1,8 +1,114 @@
 import { getPool, closePool } from './pool';
-import { Transaction, TransactionType } from '../types';
+import { DBTransaction, DBTransactionType } from '../types';
 
 // Define the table name
 const TRANSACTION_TABLE = "transactions";
+
+export function getTransactionType(logs: string[]): DBTransactionType {
+  const isSteal = logs.some(log => log.includes('Instruction: Steal'));
+  const isTransfer = logs.some(log => log.includes('Instruction: Transfer'));
+  const isCreate = logs.some(log => log.includes('Instruction: Initialize'));
+
+  if (isSteal) return DBTransactionType.STEAL;
+  if (isTransfer) return DBTransactionType.TRANSFER;
+  if (isCreate) return DBTransactionType.CREATE;
+
+  return DBTransactionType.UNKNOWN;
+}
+
+// only works with fetchTransactionHistoryByTokenId function
+export function getTransactionAmountToFrom(type: DBTransactionType, tx: any): {amount: number | null, from: string, to: string} {
+  let amount: number | null = null;
+  let from = '';
+  let to = '';
+
+  console.log("Transaction type", type);
+
+  if (type === DBTransactionType.STEAL) {
+    console.log("Transaction steal");
+    if (tx?.meta?.innerInstructions) {
+      tx.meta.innerInstructions.forEach((inner: any) => {
+        inner.instructions.slice(0, 3).forEach((ix: any) => {
+          // Use type assertion to bypass type checking
+          const parsedIx = ix as any;
+          if (parsedIx.parsed?.type === 'transfer') {
+            const info = parsedIx.parsed.info;
+            amount = (amount || 0) + info.lamports / 1e9;
+          }
+        });
+        
+        // Use type assertion to bypass type checking
+        const firstIx = inner.instructions[0] as any;
+        if (firstIx?.parsed?.info) {
+          to = firstIx.parsed.info.source || '';
+          from = firstIx.parsed.info.destination || '';
+        }
+      });
+    }
+  } else if (type === DBTransactionType.CREATE) {
+    console.log("Transaction create");
+    from = 'System';
+          
+    // Try to extract the recipient from inner instructions
+    if (tx.meta.innerInstructions?.[0]) {
+      // Use type assertion to bypass type checking
+      const firstIx = tx.meta.innerInstructions[0].instructions[0] as any;
+      if (firstIx?.parsed?.info) {
+        to = firstIx.parsed.info.source || '';
+      }
+    }
+  } else if (type === DBTransactionType.TRANSFER) {
+    console.log("Transaction transfer");
+    // Try to extract from and to addresses from the transaction
+    try {
+      // Use type assertion to bypass type checking
+      const instruction = tx.transaction.message.instructions[2] as any;
+      if (instruction.accounts) {
+        from = instruction.accounts[1]?.toString() || '';
+        to = instruction.accounts[2]?.toString() || '';
+      }
+    } catch (error) {
+      console.error("Error parsing transfer transaction:", error);
+    }
+  }
+  console.log("Transaction transfer amount to from", {amount, from, to});
+  return {amount, from, to};
+}
+
+export function getTransactionAmountToFromNew(type: DBTransactionType, tx: any): {amount: number | null, from: string, to: string} {
+  let amount: number | null = null;
+  let from = '';
+  let to = '';
+
+  console.log("tx", tx);
+  if (type === DBTransactionType.STEAL) {
+    console.log("Transaction steal");
+    try {
+      console.log("tx.transaction.message.accountKeys", tx.transaction.message.accountKeys);
+      from = tx.transaction.message.accountKeys[0].toString();
+      to = tx.transaction.message.accountKeys[1].toString();
+    } catch (error) {
+      console.error("Error parsing steal transaction:", error);
+    }
+  } else if (type === DBTransactionType.CREATE) {
+    try {
+      from = 'System';
+      to = tx.transaction.message.accountKeys[0].toString();
+    } catch (error) {
+      console.error("Error parsing create transaction:", error);
+    }
+  } else if (type === DBTransactionType.TRANSFER) {
+    try {
+      from = tx.transaction.message.accountKeys[0].toString();
+      to = tx.transaction.message.accountKeys[2].toString();
+    } catch (error) {
+      console.error("Error parsing transfer transaction:", error);
+    }
+  }
+  
+  
+  return {amount, from, to};
+}
 
 /**
  * Creates the transactions table if it doesn't exist
@@ -21,10 +127,7 @@ export async function createTransactionTableIfNotExists() {
         amount DECIMAL(20, 9),
         timestamp TIMESTAMP NOT NULL,
         block_number BIGINT,
-        slot BIGINT,
-        fee DECIMAL(20, 9),
         success BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_token
           FOREIGN KEY(token_id)
           REFERENCES tokens(id)
@@ -62,14 +165,14 @@ export async function createTransactionTableIfNotExists() {
  * Inserts a transaction into the database
  * @param transaction Transaction data to insert
  */
-export async function insertTransaction(transaction: Transaction) {
+export async function insertTransaction(transaction: DBTransaction) {
   const pool = getPool();
   const client = await pool.connect();
   try {
     const query = `
       INSERT INTO ${TRANSACTION_TABLE}
-      (id, token_id, type, from_address, to_address, amount, timestamp, block_number, slot, fee, success)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (id, token_id, type, from_address, to_address, amount, timestamp, block_number, success)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (id) DO NOTHING
       RETURNING *
     `;
@@ -83,8 +186,6 @@ export async function insertTransaction(transaction: Transaction) {
       transaction.amount,
       transaction.timestamp,
       transaction.block_number,
-      transaction.slot,
-      transaction.fee,
       transaction.success
     ];
     

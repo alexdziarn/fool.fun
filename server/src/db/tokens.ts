@@ -23,8 +23,7 @@ export async function createTokenTableIfNotExists() {
         minter TEXT NOT NULL,
         current_price DECIMAL(20, 9) NOT NULL,
         next_price DECIMAL(20, 9) NOT NULL,
-        pubkey TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        pubkey TEXT
       )
     `);
     
@@ -63,8 +62,8 @@ export async function insertToken(token: Token) {
   try {
     const query = `
       INSERT INTO ${TOKEN_TABLE}
-      (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         symbol = EXCLUDED.symbol,
@@ -87,7 +86,6 @@ export async function insertToken(token: Token) {
       token.current_price,
       token.next_price,
       token.pubkey,
-      token.created_at || new Date()
     ];
     
     const result = await client.query(query, values);

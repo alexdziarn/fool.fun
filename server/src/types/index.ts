@@ -10,26 +10,24 @@ export interface Token {
   current_price: number;        // Current token price in SOL
   next_price: number;           // Next token price in SOL
   pubkey: string;               // Token public key
-  created_at?: Date;            // Token creation timestamp
 }
 
-export enum TransactionType {
+export enum DBTransactionType {
   STEAL = 'steal',
   TRANSFER = 'transfer',
-  CREATE = 'create'
+  CREATE = 'create',
+  UNKNOWN = 'unknown'
 }
 
-export interface Transaction {
+export interface DBTransaction {
   id: string;                   // Transaction signature
   token_id: string;             // Token ID
-  type: TransactionType;        // Transaction type
+  type: DBTransactionType;      // Transaction type
   from_address: string;         // Sender address
   to_address: string;           // Recipient address
   amount: number | null;        // Amount in SOL (null for non-monetary transactions)
   timestamp: Date;              // Transaction timestamp
   block_number: number | null;  // Block number
-  slot: number | null;          // Slot number
-  fee: number | null;           // Transaction fee
   success: boolean;             // Transaction success status
 }
 
@@ -49,7 +47,7 @@ export interface TokenPage {
 
 export interface TokenWithTransactions {
   token: Token;
-  transactions: Transaction[];
+  transactions: DBTransaction[];
   transactionCount: number;
 }
 

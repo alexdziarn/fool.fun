@@ -14,7 +14,7 @@ import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { uploadToPinata, uploadToPinataGroup } from './pinata';
 import { PROGRAM_ID } from './constants';
-import { fetchTransactionHistory } from './db/populate-transactions';
+import { fetchTransactionHistoryByTokenId } from './db/populate-transactions';
 import * as dotenv from 'dotenv';
 import { insertToken } from './db/tokens';
 import { getPool } from './db/pool';
@@ -565,7 +565,6 @@ const resolvers = {
             current_price: currentPrice,
             next_price: nextPrice,
             pubkey: tokenId,
-            created_at: new Date()
           };
 
           console.log('tokenData', tokenData);
@@ -579,7 +578,7 @@ const resolvers = {
 
           // fetch transaction history until we get some, do this 15 times waiting 1 second between each try
           for (let i = 0; i < 15; i++) {
-            transactions = await fetchTransactionHistory(tokenId);
+            transactions = await fetchTransactionHistoryByTokenId(tokenId);
             if (transactions.length > 0) {
               break;
             }

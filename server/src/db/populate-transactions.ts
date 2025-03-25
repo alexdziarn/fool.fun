@@ -1,11 +1,12 @@
 import { clusterApiUrl, Connection, PublicKey, ParsedTransactionWithMeta, ParsedInstruction } from "@solana/web3.js";
 import { PROGRAM_ID } from "../constants";
 import { getPool, closePool } from './pool';
-import { insertTransaction } from './transactions';
-import { Transaction, TransactionType } from '../types';
+import { getTransactionAmountToFrom, getTransactionType, insertTransaction } from './transactions';
+import { DBTransaction, DBTransactionType } from '../types';
 
 // Define the table name
 const TOKEN_TABLE = "tokens";
+
 
 /**
  * Fetches all tokens from the database
@@ -27,7 +28,7 @@ async function getAllTokens() {
  * Fetches transaction history for a token
  * @param tokenId The token's ID in the database
  */
-export async function fetchTransactionHistory(tokenId: string) {
+export async function fetchTransactionHistoryByTokenId(tokenId: string) {
   try {
     console.log(`Fetching transaction history for token ${tokenId}`);
     const connection = new Connection(clusterApiUrl('devnet'));
@@ -41,7 +42,7 @@ export async function fetchTransactionHistory(tokenId: string) {
     
     // 2. Process transactions in batches to avoid rate limits
     const BATCH_SIZE = 5;
-    const transactions: Transaction[] = [];
+    const transactions: DBTransaction[] = [];
     
     for (let i = 0; i < signatures.length; i += BATCH_SIZE) {
       const batch = signatures.slice(i, i + BATCH_SIZE);
@@ -67,72 +68,12 @@ export async function fetchTransactionHistory(tokenId: string) {
         const logs = tx.meta.logMessages;
         
         // Determine transaction type
-        const isSteal = logs.some(log => log.includes('Instruction: Steal'));
-        const isTransfer = logs.some(log => log.includes('Instruction: Transfer'));
-        const isCreate = logs.some(log => log.includes('Instruction: Initialize'));
+        const type = getTransactionType(logs);
         
-        if (!isSteal && !isTransfer && !isCreate) continue;
-        
-        let type: TransactionType;
-        let amount: number | null = null;
-        let from = '';
-        let to = '';
-        
-        if (isSteal) {
-          type = TransactionType.STEAL;
-          
-          if (tx?.meta?.innerInstructions) {
-            tx.meta.innerInstructions.forEach((inner) => {
-              inner.instructions.slice(0, 3).forEach((ix) => {
-                // Use type assertion to bypass type checking
-                const parsedIx = ix as any;
-                if (parsedIx.parsed?.type === 'transfer') {
-                  const info = parsedIx.parsed.info;
-                  amount = (amount || 0) + info.lamports / 1e9;
-                }
-              });
-              
-              // Use type assertion to bypass type checking
-              const firstIx = inner.instructions[0] as any;
-              if (firstIx?.parsed?.info) {
-                to = firstIx.parsed.info.source || '';
-                from = firstIx.parsed.info.destination || '';
-              }
-            });
-          }
-        } else if (isCreate) {
-          type = TransactionType.CREATE;
-          from = 'System';
-          
-          // Try to extract the recipient from inner instructions
-          if (tx.meta.innerInstructions?.[0]) {
-            // Use type assertion to bypass type checking
-            const firstIx = tx.meta.innerInstructions[0].instructions[0] as any;
-            if (firstIx?.parsed?.info) {
-              to = firstIx.parsed.info.source || '';
-            }
-          }
-        } else if (isTransfer) {
-          type = TransactionType.TRANSFER;
-          
-          // Try to extract from and to addresses from the transaction
-          try {
-            // Use type assertion to bypass type checking
-            const instruction = tx.transaction.message.instructions[2] as any;
-            if (instruction.accounts) {
-              from = instruction.accounts[1]?.toString() || '';
-              to = instruction.accounts[2]?.toString() || '';
-            }
-          } catch (error) {
-            console.error("Error parsing transfer transaction:", error);
-          }
-        } else {
-          // Skip unknown transaction types
-          continue;
-        }
+        const {amount, from, to} = getTransactionAmountToFrom(type, tx);
         
         // Create transaction object
-        const transaction: Transaction = {
+        const transaction: DBTransaction = {
           id: sig.signature,
           token_id: tokenId,
           type,
@@ -141,8 +82,6 @@ export async function fetchTransactionHistory(tokenId: string) {
           amount,
           timestamp,
           block_number: tx.slot || null,
-          slot: tx.slot || null,
-          fee: tx.meta.fee ? tx.meta.fee / 1e9 : null,
           success: !tx.meta.err
         };
         
@@ -180,7 +119,7 @@ async function populateTransactionsTable() {
       }
       
       // Fetch transaction history
-      const transactions = await fetchTransactionHistory(token.id);
+      const transactions = await fetchTransactionHistoryByTokenId(token.id);
       
       // Insert transactions into the database
       for (const transaction of transactions) {
