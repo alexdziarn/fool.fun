@@ -2,7 +2,7 @@ import amqp from 'amqplib';
 import type { Channel } from 'amqplib';
 import { DBTransaction } from '../types';
 
-const QUEUE_NAME = 'transaction-updates';
+const QUEUE_NAME = 'transaction_queue';
 let connection: any = null;
 let channel: Channel | null = null;
 

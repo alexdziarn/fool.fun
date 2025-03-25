@@ -75,39 +75,43 @@ export function getTransactionAmountToFrom(type: DBTransactionType, tx: any): {a
   return {amount, from, to};
 }
 
-export function getTransactionAmountToFromNew(type: DBTransactionType, tx: any): {amount: number | null, from: string, to: string} {
+export function getTransactionAmountToFromNew(type: DBTransactionType, tx: any): {amount: number | null, from: string, to: string, token_id: string} {
   let amount: number | null = null;
   let from = '';
   let to = '';
+  let token_id = '';
 
-  console.log("tx", tx);
+  console.log("tx.transaction.message.instructions", tx.transaction.message.instructions);
+  console.log("tx.meta.innerInstructions", tx.meta.innerInstructions);
+  console.log("tx.transaction.message.accountKeys", tx.transaction.message.accountKeys);
   if (type === DBTransactionType.STEAL) {
     console.log("Transaction steal");
     try {
-      console.log("tx.transaction.message.accountKeys", tx.transaction.message.accountKeys);
-      from = tx.transaction.message.accountKeys[0].toString();
-      to = tx.transaction.message.accountKeys[1].toString();
+      from = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[1]].toString();
+      to = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[2]].toString();
+      token_id = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[0]].toString();
     } catch (error) {
       console.error("Error parsing steal transaction:", error);
     }
   } else if (type === DBTransactionType.CREATE) {
     try {
       from = 'System';
-      to = tx.transaction.message.accountKeys[0].toString();
+      to = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[1]].toString();
+      token_id = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[0]].toString();
     } catch (error) {
       console.error("Error parsing create transaction:", error);
     }
   } else if (type === DBTransactionType.TRANSFER) {
     try {
-      from = tx.transaction.message.accountKeys[0].toString();
-      to = tx.transaction.message.accountKeys[2].toString();
+      from = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[1]].toString();
+      to = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[2]].toString();
+      token_id = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[0]].toString();
     } catch (error) {
       console.error("Error parsing transfer transaction:", error);
     }
   }
   
-  
-  return {amount, from, to};
+  return {amount, from, to, token_id};
 }
 
 /**

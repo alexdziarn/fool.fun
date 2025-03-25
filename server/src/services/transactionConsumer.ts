@@ -47,11 +47,12 @@ async function consumeMessages() {
                 console.log(`Transaction ID: ${transaction.id}`);
                 console.log(`Type: ${transaction.type}`);
                 console.log(`Block Number: ${transaction.block_number}`);
-                console.log(`Timestamp: ${transaction.timestamp instanceof Date ? transaction.timestamp.toISOString() : 'N/A'}`);
+                console.log(`Timestamp: ${transaction.timestamp}`);
                 console.log(`From: ${transaction.from_address}`);
                 console.log(`To: ${transaction.to_address}`);
                 console.log(`Amount: ${transaction.amount}`);
                 console.log(`Success: ${transaction.success}`);
+                console.log(`Token ID: ${transaction.token_id}`);
                 console.log('================================\n');
 
                 // Acknowledge the message

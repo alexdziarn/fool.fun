@@ -59,12 +59,12 @@ export async function scanBlocks(
 
             //const {amount, from, to} = getTransactionTransferAmountToFrom(type, tx);
 
-            const {amount, from, to} = getTransactionAmountToFromNew(type, tx);
+            const {amount, from, to, token_id} = getTransactionAmountToFromNew(type, tx);
 
             // start creating a new transaction object
             const transaction: DBTransaction = {
               id: tx.transaction.signatures[0],
-              token_id: tx.transaction.message.staticAccountKeys[0].toString(), // First account is the token account
+              token_id,
               type,
               from_address: from,
               to_address: to,
