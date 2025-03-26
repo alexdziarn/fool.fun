@@ -66,13 +66,12 @@ export async function fetchTransactionHistoryByTokenId(tokenId: string) {
         
         const timestamp = sig.blockTime ? new Date(sig.blockTime * 1000) : new Date();
         const logs = tx.meta.logMessages;
-        
         // Determine transaction type
         const type = getTransactionType(logs);
 
         let token: Token | null = null;
         if (type === DBTransactionType.STEAL) {
-          token = await getSingleTokenDataFromBlockchain(tokenId, connection);
+          token = await getSingleTokenDataFromBlockchain(tokenId, tx.slot);
         }
         
         const {amount, from, to} = getTransactionAmountToFrom(type, tx);

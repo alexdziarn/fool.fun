@@ -2,9 +2,10 @@ import { Connection, clusterApiUrl, PublicKey, VersionedBlockResponse, ParsedAcc
 import { PROGRAM_ID } from '../constants';
 import { queueTransactionUpdate } from './queueService';
 import { DBTransaction, DBTransactionType, Token } from '../types';
-import { Transaction, ConfirmedTransactionMeta, TransactionVersion } from '@solana/web3.js';
+import { Transaction, ConfirmedTransactionMeta, TransactionVersion, TokenBalance } from '@solana/web3.js';
 import { getTransactionToFromNew, getTransactionType } from '../db/transactions';
-import { getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
+import { getData, getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
+import bs58 from 'bs58';
 
 /**
  * Continuously scans blocks for program transactions
@@ -60,22 +61,32 @@ export async function scanBlocks(
 
             let token: Token | null = null;
             let amount: number | null = null;
-
-            console.log("tx", tx);
-            console.log("tx.meta", tx.meta);
-            console.log("tx.transaction", tx.transaction);
-
-            
-            // figure way to get amount from the transaction
             const {from, to, token_id} = getTransactionToFromNew(type, tx);
-
-            console.log("from", from);
-            console.log("to", to);
 
             if (type === DBTransactionType.STEAL) {
               // getSingleTokenDataFromBlockchain is getting old data, need to update
-              token = await getSingleTokenDataFromBlockchain(token_id, connection);
-              amount = token?.current_price || null
+              token = await getSingleTokenDataFromBlockchain(token_id, blockNumber);
+
+              amount = 0;
+
+              // calculate amount from inner instructions
+              if (tx.meta?.innerInstructions) {
+                tx.meta.innerInstructions.forEach((inner: any) => {
+                  inner.instructions.slice(0, 3).forEach((ix: any) => {
+                    try {
+                      // Decode the base58 data
+                      const decodedData = bs58.decode(ix.data);
+                      // Extract amount from the buffer (bytes 4-11)
+                      const amountBuffer = decodedData.slice(4, 12);
+                      // Read the bytes in little-endian order and convert to number
+                      const am = amountBuffer.reduce((acc, byte, index) => acc + (byte * Math.pow(256, index)), 0);
+                      amount = (amount || 0) + am / 1e9; // Convert lamports to SOL
+                    } catch (error) {
+                      console.error("Error decoding instruction:", error);
+                    }
+                  });
+                });
+              }
             }
 
             // start creating a new transaction object
@@ -92,7 +103,7 @@ export async function scanBlocks(
               timestamp: block.blockTime ? new Date(block.blockTime * 1000) : new Date(),
             }
 
-            console.log("Transaction pre-queue insert", transaction);
+            // console.log("Transaction pre-queue insert", transaction);
 
             // add the transaction to the queue
             await queueTransactionUpdate(transaction);

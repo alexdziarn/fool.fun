@@ -211,17 +211,23 @@ async function getTokenDataFromBlockchain(limit?: number, debug = false): Promis
 /**
  * Fetches single token data from the blockchain
  * @param tokenId The token's ID in the blockchain
+ * @param connection The Solana connection
+ * @param blockNumber Optional block number to fetch data from. If not provided, fetches current state.
  * @returns The token data or null if not found or error occurs
  */
-export async function getSingleTokenDataFromBlockchain(tokenId: string, connection: Connection): Promise<Token | null> {
+export async function getSingleTokenDataFromBlockchain(tokenId: string, blockNumber?: number): Promise<Token | null> {
   try {
-    const account = await connection.getAccountInfo(new PublicKey(tokenId));
-    if (!account) {
+    const connection = new Connection(clusterApiUrl('devnet'));
+    const account = await connection.getParsedAccountInfo(
+      new PublicKey(tokenId),
+      blockNumber ? { commitment: 'confirmed', ...(blockNumber ? { slot: blockNumber } : {}) } : undefined
+    );
+    if (!account.value) {
       console.error("Token account not found on blockchain");
       return null;
     }
     const token = await getData({
-      account: { data: account.data },
+      account: { data: account.value.data },
       pubkey: { toString: () => tokenId }
     });
     return token
