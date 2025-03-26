@@ -25,12 +25,20 @@ export async function scanBlocks(
   try {
     const connection = new Connection(clusterApiUrl('devnet'));
     let currentBlock = startBlock;
+    let isProcessing = false; // Add lock flag
 
     console.log(`Starting block scanner from block ${startBlock}`);
 
     // Function to process a single block
     async function processBlock(blockNumber: number) {
+      // Skip if already processing this block
+      if (isProcessing) {
+        console.log(`Block ${blockNumber} is already being processed, skipping`);
+        return;
+      }
+
       try {
+        isProcessing = true; // Set lock
         console.log(`Processing block ${blockNumber}`);
 
         // Get the block data
@@ -88,7 +96,6 @@ export async function scanBlocks(
 
             // add the transaction to the queue
             await queueTransactionUpdate(transaction);
-
           }
 
           // Call the callback if provided
@@ -106,6 +113,8 @@ export async function scanBlocks(
         }
         console.error(`Error processing block ${blockNumber}:`, error);
         throw error;
+      } finally {
+        isProcessing = false; // Release lock
       }
     }
 
