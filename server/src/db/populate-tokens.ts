@@ -4,44 +4,6 @@ import { closePool } from './pool';
 import { insertToken, createTokenTableIfNotExists, getTopTokensByPrice } from './tokens';
 import { Token } from '../types';
 
-/**
- * Interface for token data from the blockchain
- */
-interface BlockchainToken {
-  name: string;
-  symbol: string;
-  description: string;
-  image: string;
-  currentHolder: string;
-  minter: string;
-  currentPrice: number;
-  nextPrice: number;
-  pubkey: string;
-  id: string;
-}
-
-/**
- * Helper function to dump account data for debugging
- * @param data Buffer containing account data
- * @param maxBytes Maximum number of bytes to dump (default: 100)
- */
-function dumpAccountData(data: Buffer, maxBytes = 100): string {
-  const bytes = Array.from(data.slice(0, Math.min(data.length, maxBytes)));
-  
-  let result = 'Bytes: ';
-  // Hex representation
-  result += bytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
-  
-  result += '\nASCII: ';
-  // ASCII representation (printable chars only)
-  result += bytes.map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
-  
-  if (data.length > maxBytes) {
-    result += `\n... (${data.length - maxBytes} more bytes)`;
-  }
-  
-  return result;
-}
 
 export async function getData(account: { account: { data: any; }; pubkey: { toString: () => any; }; }): Promise<Token | null> {
   // Parse token data with detailed error handling
