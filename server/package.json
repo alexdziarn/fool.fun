@@ -136,8 +136,7 @@
     "setup-all": "ts-node src/db/tokens.ts && ts-node src/db/transactions.ts && ts-node src/db/populate-tokens.ts && ts-node src/db/populate-transactions.ts",
     "create-scanner-state": "ts-node src/db/scanner-state.ts",
     "scanner": "ts-node src/services/transactionScanner.ts",
-    "consumer": "ts-node src/services/transactionConsumer.ts",
-    "queue": "ts-node src/services/queueService.ts"
+    "consumer": "ts-node src/services/transactionConsumer.ts"
   },
   "author": "",
   "license": "ISC",
