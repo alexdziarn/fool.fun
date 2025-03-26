@@ -24,28 +24,6 @@ const UPLOAD_FILE_TO_TEMP_GROUP = gql`
   }
 `;
 
-const SYNC_TOKEN_FROM_BLOCKCHAIN = gql`
-  mutation SyncTokenFromBlockchain($tokenId: String!) {
-    syncTokenFromBlockchain(tokenId: $tokenId) {
-      success
-      message
-      token {
-        id
-        name
-        symbol
-        description
-        image
-        currentHolder
-        minter
-        currentPrice
-        nextPrice
-        pubkey
-        createdAt
-      }
-    }
-  }
-`;
-
 interface CreateTokenForm {
   name: string;
   ticker: string;
@@ -89,7 +67,6 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
   const navigate = useNavigate();
   const { publicKey, sendTransaction } = useWallet();
   const [uploadFileToTempGroup] = useMutation(UPLOAD_FILE_TO_TEMP_GROUP);
-  const [syncTokenFromBlockchain] = useMutation(SYNC_TOKEN_FROM_BLOCKCHAIN);
   const [isOpen, setIsOpen] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [formData, setFormData] = useState<CreateTokenForm>({
@@ -273,10 +250,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
 
         console.log('Token created! Signature:', signature);
 
-        // sync token to db
-        console.log('Syncing token to database...');
-        await syncTokenToDb(tokenPDA.toString());
-        console.log('Token synced successfully to database');
+        // transaction scanner and consumer will handle the sync, maybe add function to direct to page of the token
 
         setFormData({
           name: '',
@@ -298,22 +272,6 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
       alert('Failed to create token: ' + error.message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const syncTokenToDb = async (tokenId: string) => {
-    try {
-      const { data } = await syncTokenFromBlockchain({
-        variables: { tokenId }
-      });
-
-      if (!data?.syncTokenFromBlockchain?.success) {
-        console.error('Failed to sync token:', data?.syncTokenFromBlockchain?.message);
-      } else {
-        console.log('Token synced successfully:', data?.syncTokenFromBlockchain?.message);
-      }
-    } catch (error) {
-      console.error('Error syncing token to database:', error);
     }
   };
 
