@@ -75,20 +75,21 @@ export function getTransactionAmountToFrom(type: DBTransactionType, tx: any): {a
   return {amount, from, to};
 }
 
-export function getTransactionAmountToFromNew(type: DBTransactionType, tx: any): {amount: number | null, from: string, to: string, token_id: string} {
-  let amount: number | null = null;
+export function getTransactionToFromNew(type: DBTransactionType, tx: any): {from: string, to: string, token_id: string} {
   let from = '';
   let to = '';
   let token_id = '';
 
-  console.log("tx.transaction.message.instructions", tx.transaction.message.instructions);
-  console.log("tx.meta.innerInstructions", tx.meta.innerInstructions);
-  console.log("tx.transaction.message.accountKeys", tx.transaction.message.accountKeys);
+  // console.log("tx.transaction.message.instructions", tx.transaction.message.instructions);
+  // console.log("tx.meta.innerInstructions", tx.meta.innerInstructions);
+  // console.log("tx.transaction.message.accountKeys", tx.transaction.message.accountKeys);
+  // console.log("tx.meta", tx.meta)
+  // console.log("tx.transaction", tx.transaction);
   if (type === DBTransactionType.STEAL) {
     console.log("Transaction steal");
     try {
-      from = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[1]].toString();
-      to = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[2]].toString();
+      from = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[2]].toString();
+      to = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[1]].toString();
       token_id = tx.transaction.message.accountKeys[tx.transaction.message.instructions[2].accounts[0]].toString();
     } catch (error) {
       console.error("Error parsing steal transaction:", error);
@@ -111,7 +112,7 @@ export function getTransactionAmountToFromNew(type: DBTransactionType, tx: any):
     }
   }
   
-  return {amount, from, to, token_id};
+  return {from, to, token_id};
 }
 
 /**

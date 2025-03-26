@@ -209,6 +209,29 @@ async function getTokenDataFromBlockchain(limit?: number, debug = false): Promis
 }
 
 /**
+ * Fetches single token data from the blockchain
+ * @param tokenId The token's ID in the blockchain
+ * @returns The token data or null if not found or error occurs
+ */
+export async function getSingleTokenDataFromBlockchain(tokenId: string, connection: Connection): Promise<Token | null> {
+  try {
+    const account = await connection.getAccountInfo(new PublicKey(tokenId));
+    if (!account) {
+      console.error("Token account not found on blockchain");
+      return null;
+    }
+    const token = await getData({
+      account: { data: account.data },
+      pubkey: { toString: () => tokenId }
+    });
+    return token
+  } catch (error) {
+    console.error("Error fetching token data from blockchain:", error);
+    return null;
+  }
+}
+
+/**
  * Populates the tokens table with data from the blockchain
  * @param limit Optional limit on number of tokens to process
  * @param debug Whether to print debug information

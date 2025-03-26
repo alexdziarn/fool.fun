@@ -2,8 +2,8 @@ import { clusterApiUrl, Connection, PublicKey, ParsedTransactionWithMeta, Parsed
 import { PROGRAM_ID } from "../constants";
 import { getPool, closePool } from './pool';
 import { getTransactionAmountToFrom, getTransactionType, insertTransaction } from './transactions';
-import { DBTransaction, DBTransactionType } from '../types';
-
+import { DBTransaction, DBTransactionType, Token } from '../types';
+import { getSingleTokenDataFromBlockchain } from './populate-tokens';
 // Define the table name
 const TOKEN_TABLE = "tokens";
 
@@ -69,6 +69,11 @@ export async function fetchTransactionHistoryByTokenId(tokenId: string) {
         
         // Determine transaction type
         const type = getTransactionType(logs);
+
+        let token: Token | null = null;
+        if (type === DBTransactionType.STEAL) {
+          token = await getSingleTokenDataFromBlockchain(tokenId);
+        }
         
         const {amount, from, to} = getTransactionAmountToFrom(type, tx);
         
@@ -76,6 +81,7 @@ export async function fetchTransactionHistoryByTokenId(tokenId: string) {
         const transaction: DBTransaction = {
           id: sig.signature,
           token_id: tokenId,
+          token,
           type,
           from_address: from || 'Unknown',
           to_address: to || 'Unknown',

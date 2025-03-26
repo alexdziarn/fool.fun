@@ -22,6 +22,7 @@ export enum DBTransactionType {
 export interface DBTransaction {
   id: string;                   // Transaction signature
   token_id: string;             // Token ID
+  token: Token | null;          // Token data (null for non-steal transactions)
   type: DBTransactionType;      // Transaction type
   from_address: string;         // Sender address
   to_address: string;           // Recipient address

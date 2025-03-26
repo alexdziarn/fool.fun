@@ -1,9 +1,10 @@
 import { Connection, clusterApiUrl, PublicKey, VersionedBlockResponse, ParsedAccountsModeBlockResponse, VersionedMessage } from '@solana/web3.js';
 import { PROGRAM_ID } from '../constants';
 import { queueTransactionUpdate } from './queueService';
-import { DBTransaction, DBTransactionType } from '../types';
+import { DBTransaction, DBTransactionType, Token } from '../types';
 import { Transaction, ConfirmedTransactionMeta, TransactionVersion } from '@solana/web3.js';
-import { getTransactionAmountToFromNew, getTransactionType } from '../db/transactions';
+import { getTransactionToFromNew, getTransactionType } from '../db/transactions';
+import { getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
 
 /**
  * Continuously scans blocks for program transactions
@@ -57,21 +58,38 @@ export async function scanBlocks(
           for (const tx of programTransactions) {
             const type = getTransactionType(tx.meta?.logMessages || []);
 
-            //const {amount, from, to} = getTransactionTransferAmountToFrom(type, tx);
+            let token: Token | null = null;
+            let amount: number | null = null;
 
-            const {amount, from, to, token_id} = getTransactionAmountToFromNew(type, tx);
+            console.log("tx", tx);
+            console.log("tx.meta", tx.meta);
+            console.log("tx.transaction", tx.transaction);
+
+            
+            // figure way to get amount from the transaction
+            const {from, to, token_id} = getTransactionToFromNew(type, tx);
+
+            console.log("from", from);
+            console.log("to", to);
+
+            if (type === DBTransactionType.STEAL) {
+              // getSingleTokenDataFromBlockchain is getting old data, need to update
+              token = await getSingleTokenDataFromBlockchain(token_id, connection);
+              amount = token?.current_price || null
+            }
 
             // start creating a new transaction object
             const transaction: DBTransaction = {
               id: tx.transaction.signatures[0],
               token_id,
+              token,
               type,
               from_address: from,
               to_address: to,
               amount,
               success: true,
               block_number: blockNumber,
-              timestamp: new Date(block.blockTime || 0 * 1000),
+              timestamp: block.blockTime ? new Date(block.blockTime * 1000) : new Date(),
             }
 
             console.log("Transaction pre-queue insert", transaction);
@@ -87,7 +105,13 @@ export async function scanBlocks(
         
         currentBlock++;
 
-      } catch (error) {
+      } catch (error: any) {
+        // Handle skipped blocks or missing blocks due to ledger jumps
+        if (error?.code === -32007) {
+          console.log(`Block ${blockNumber} was skipped or missing due to ledger jump, continuing to next block`);
+          currentBlock++;
+          return;
+        }
         console.error(`Error processing block ${blockNumber}:`, error);
         throw error;
       }

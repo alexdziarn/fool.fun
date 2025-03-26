@@ -60,6 +60,8 @@ export async function createTokenTableIfNotExists() {
 export async function insertToken(token: Token) {
   const client = await getPool().connect();
   try {
+
+    // may need to fix the ON CONFLICT to update the token if it already exists
     const query = `
       INSERT INTO ${TOKEN_TABLE}
       (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey)
@@ -97,6 +99,37 @@ export async function insertToken(token: Token) {
     client.release();
   }
 }
+
+/**
+ * Updates a token in the database
+ * @param tokenId Token ID to update
+ * @param token Token data to update
+ */
+export async function updateToken(token: Token) {
+  const client = await getPool().connect();
+  try {
+    const query = `
+      UPDATE ${TOKEN_TABLE}
+      SET current_holder = $2, current_price = $3, next_price = $4
+      WHERE id = $1
+      RETURNING *
+    `;
+    const values = [
+      token.id,
+      token.current_holder,
+      token.current_price,
+      token.next_price,
+    ];
+    const result = await client.query(query, values);
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error updating token:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 
 /**
  * Gets a token by its ID

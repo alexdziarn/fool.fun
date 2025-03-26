@@ -1,6 +1,8 @@
 import type { Channel, ConsumeMessage } from 'amqplib';
 import amqp from 'amqplib';
-import { DBTransaction } from '../types';
+import { DBTransaction, DBTransactionType } from '../types';
+import { updateToken } from '../db/tokens';
+import { insertTransaction } from '../db/transactions';
 
 let connection: any = null;
 let channel: Channel | null = null;
@@ -53,8 +55,27 @@ async function consumeMessages() {
                 console.log(`Amount: ${transaction.amount}`);
                 console.log(`Success: ${transaction.success}`);
                 console.log(`Token ID: ${transaction.token_id}`);
+                console.log(`Token: ${transaction.token}`);
                 console.log('================================\n');
 
+                // begin processing the transaction and update the database
+
+                // update the token db current_holder, current_price, next_price if the transaction is a steal
+                if (transaction.type === DBTransactionType.STEAL && transaction.token) {
+                    try {
+                        await updateToken(transaction.token);
+                    } catch (error) {
+                        console.error('Error updating token:', error);
+                    }
+                }
+                // add the transaction to the transaction db, update/do nothing if it already exists
+                try {
+                    await insertTransaction(transaction);
+                } catch (error) {
+                    console.error('Error inserting transaction:', error);
+                }
+
+                console.log('Transaction processed successfully');
                 // Acknowledge the message
                 channel?.ack(data);
             } catch (error) {
