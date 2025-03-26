@@ -3,7 +3,7 @@ import { PROGRAM_ID } from '../constants';
 import { queueTransactionUpdate } from './queueService';
 import { DBTransaction, DBTransactionType, Token } from '../types';
 import { Transaction, ConfirmedTransactionMeta, TransactionVersion, TokenBalance } from '@solana/web3.js';
-import { getTransactionToFromNew, getTransactionType } from '../db/transactions';
+import { calculateAmountFromInnerInstructions, getTransactionToFromNew, getTransactionType } from '../db/transactions';
 import { getData, getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
 import bs58 from 'bs58';
 
@@ -64,29 +64,10 @@ export async function scanBlocks(
             const {from, to, token_id} = getTransactionToFromNew(type, tx);
 
             if (type === DBTransactionType.STEAL) {
-              // getSingleTokenDataFromBlockchain is getting old data, need to update
+              // gets the token data from the transaction
               token = await getSingleTokenDataFromBlockchain(token_id, blockNumber);
 
-              amount = 0;
-
-              // calculate amount from inner instructions
-              if (tx.meta?.innerInstructions) {
-                tx.meta.innerInstructions.forEach((inner: any) => {
-                  inner.instructions.slice(0, 3).forEach((ix: any) => {
-                    try {
-                      // Decode the base58 data
-                      const decodedData = bs58.decode(ix.data);
-                      // Extract amount from the buffer (bytes 4-11)
-                      const amountBuffer = decodedData.slice(4, 12);
-                      // Read the bytes in little-endian order and convert to number
-                      const am = amountBuffer.reduce((acc, byte, index) => acc + (byte * Math.pow(256, index)), 0);
-                      amount = (amount || 0) + am / 1e9; // Convert lamports to SOL
-                    } catch (error) {
-                      console.error("Error decoding instruction:", error);
-                    }
-                  });
-                });
-              }
+              amount = calculateAmountFromInnerInstructions(tx.meta?.innerInstructions);
             }
 
             // start creating a new transaction object

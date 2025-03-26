@@ -74,6 +74,7 @@ export async function fetchTransactionHistoryByTokenId(tokenId: string) {
           token = await getSingleTokenDataFromBlockchain(tokenId, tx.slot);
         }
         
+        // TODO: use the calculateAmountFromInnerInstructions function and getTransactionToFromNew function
         const {amount, from, to} = getTransactionAmountToFrom(type, tx);
         
         // Create transaction object

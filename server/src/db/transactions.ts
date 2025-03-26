@@ -1,5 +1,6 @@
 import { getPool, closePool } from './pool';
 import { DBTransaction, DBTransactionType } from '../types';
+import bs58 from 'bs58';
 
 // Define the table name
 const TRANSACTION_TABLE = "transactions";
@@ -14,6 +15,34 @@ export function getTransactionType(logs: string[]): DBTransactionType {
   if (isCreate) return DBTransactionType.CREATE;
 
   return DBTransactionType.UNKNOWN;
+}
+
+/**
+ * Calculates the amount from inner instructions
+ * @param innerInstructions Inner instructions to calculate the amount from
+ * @returns Amount in SOL
+ */
+export function calculateAmountFromInnerInstructions(innerInstructions: any): number {
+  if (!innerInstructions) return 0;
+
+  let amount = 0;
+  innerInstructions.forEach((inner: any) => {
+    inner.instructions.slice(0, 3).forEach((ix: any) => {
+      try {
+          // Decode the base58 data
+          const decodedData = bs58.decode(ix.data);
+          // Extract amount from the buffer (bytes 4-11)
+          const amountBuffer = decodedData.slice(4, 12);
+          // Read the bytes in little-endian order and convert to number
+          const am = amountBuffer.reduce((acc, byte, index) => acc + (byte * Math.pow(256, index)), 0);
+          amount = (amount || 0) + am / 1e9; // Convert lamports to SOL
+        } catch (error) {
+          console.error("Error decoding instruction:", error);
+      }
+    });
+  });
+
+  return amount;
 }
 
 // only works with fetchTransactionHistoryByTokenId function
