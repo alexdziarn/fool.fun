@@ -72,7 +72,7 @@ export async function fetchTransactionHistoryByTokenId(tokenId: string) {
 
         let token: Token | null = null;
         if (type === DBTransactionType.STEAL) {
-          token = await getSingleTokenDataFromBlockchain(tokenId);
+          token = await getSingleTokenDataFromBlockchain(tokenId, connection);
         }
         
         const {amount, from, to} = getTransactionAmountToFrom(type, tx);
