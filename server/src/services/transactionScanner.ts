@@ -63,7 +63,7 @@ export async function scanBlocks(
             let amount: number | null = null;
             const {from, to, token_id} = getTransactionToFromNew(type, tx);
 
-            if (type === DBTransactionType.STEAL) {
+            if (type === DBTransactionType.STEAL || type === DBTransactionType.CREATE) {
               // gets the token data from the transaction
               token = await getSingleTokenDataFromBlockchain(token_id, blockNumber);
 

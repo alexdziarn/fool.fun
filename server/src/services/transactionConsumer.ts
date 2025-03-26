@@ -1,7 +1,7 @@
 import type { Channel, ConsumeMessage } from 'amqplib';
 import amqp from 'amqplib';
 import { DBTransaction, DBTransactionType } from '../types';
-import { updateToken } from '../db/tokens';
+import { insertToken, updateToken, updateTokenHolder } from '../db/tokens';
 import { insertTransaction } from '../db/transactions';
 
 let connection: any = null;
@@ -14,11 +14,11 @@ async function connectQueue() {
         const password = process.env.RABBITMQ_PASS || 'admin';
         const host = process.env.RABBITMQ_HOST || 'localhost';
         const port = process.env.RABBITMQ_PORT || '5672';
-        
+
         const url = `amqp://${username}:${password}@${host}:${port}`;
         connection = await amqp.connect(url);
         if (!connection) throw new Error('Failed to create RabbitMQ connection');
-        
+
         channel = await connection.createChannel();
         if (!channel) throw new Error('Failed to create channel');
 
@@ -59,13 +59,31 @@ async function consumeMessages() {
                 console.log('================================\n');
 
                 // begin processing the transaction and update the database
-
-                // update the token db current_holder, current_price, next_price if the transaction is a steal
-                if (transaction.type === DBTransactionType.STEAL && transaction.token) {
+                if (transaction.type === DBTransactionType.CREATE) {
+                    if (transaction.token) {
+                        try {
+                            await insertToken(transaction.token);
+                        } catch (error) {
+                            console.error('Error inserting token:', error);
+                        }
+                    } else {
+                        console.error('Token not found in create transaction:', transaction);
+                    }
+                } else if (transaction.type === DBTransactionType.STEAL) {
+                    if (transaction.token) {
+                        try {
+                            await updateToken(transaction.token);
+                        } catch (error) {
+                            console.error('Error updating token current_holder, current_price, next_price:', error);
+                        }
+                    } else {
+                        console.error('Token not found in steal transaction:', transaction);
+                    }
+                } else if (transaction.type === DBTransactionType.TRANSFER) {
                     try {
-                        await updateToken(transaction.token);
+                        await updateTokenHolder(transaction.token_id, transaction.to_address);
                     } catch (error) {
-                        console.error('Error updating token:', error);
+                        console.error('Error updating token current_holder:', error);
                     }
                 }
                 // add the transaction to the transaction db, update/do nothing if it already exists

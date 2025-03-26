@@ -78,6 +78,10 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
   const [transferSuccess, setTransferSuccess] = useState(false);
   const [transferInProgress, setTransferInProgress] = useState(false);
   const [invalidTokenId, setInvalidTokenId] = useState<string | null>(null);
+  const [showStealModal, setShowStealModal] = useState(false);
+  const [stealError, setStealError] = useState('');
+  const [stealSuccess, setStealSuccess] = useState(false);
+  const [stealOriginalPrice, setStealOriginalPrice] = useState(0);
 
   // Validate token ID format
   useEffect(() => {
@@ -147,7 +151,10 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
   // Set initial steal amount when token data is loaded
   useEffect(() => {
     if (token) {
-      setStealAmount(token.currentPrice);
+      // Only set the steal amount if it's less than the current price
+      if (stealAmount < token.currentPrice) {
+        setStealAmount(token.currentPrice);
+      }
     }
   }, [token]);
 
@@ -177,6 +184,7 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
     
     try {
       setTransferInProgress(true);
+      setStealOriginalPrice(token.currentPrice); // Store the original price
       const connection = new Connection(clusterApiUrl('devnet'));
       
       // Find the token PDA
@@ -190,7 +198,7 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
       );
       
       // Create the steal instruction
-      const paymentAmount = token.currentPrice * LAMPORTS_PER_SOL;
+      const paymentAmount = stealAmount * LAMPORTS_PER_SOL;
       const stealInstruction = new TransactionInstruction({
         keys: [
           { pubkey: tokenPDA, isSigner: false, isWritable: true },
@@ -235,11 +243,16 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
       // Refresh token data
       refetch();
       
-      // Show success message
-      alert(`Successfully stole the token for ${stealAmount} SOL!`);
+      // Show success message and close modal after delay
+      setStealSuccess(true);
+      setTimeout(() => {
+        setShowStealModal(false);
+        setStealSuccess(false);
+        setStealAmount(token.currentPrice); // Reset to current price
+      }, 2000);
     } catch (err) {
       console.error('Error stealing token:', err);
-      alert('Failed to steal token. See console for details.');
+      setStealError('Failed to steal token. Please try again.');
     } finally {
       setTransferInProgress(false);
     }
@@ -333,6 +346,15 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
             <div className="text-green-400 mb-4">
               Token transferred successfully!
             </div>
+          ) : isTransferring ? (
+            <div className="flex flex-col items-center justify-center py-4">
+              <div className="animate-spin text-blue-400 text-5xl mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <p className="text-gray-400">Processing transaction...</p>
+            </div>
           ) : (
             <>
               <p className="mb-4">
@@ -365,7 +387,77 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
                   disabled={isTransferring || !transferAddress}
                   className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-50"
                 >
-                  {isTransferring ? 'Transferring...' : 'Transfer'}
+                  Transfer
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const StealModal = () => {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-gray-800 p-6 rounded-lg w-full max-w-md">
+          <h2 className="text-xl font-bold mb-4">Steal Token</h2>
+          
+          {stealSuccess ? (
+            <div className="text-green-400 mb-4">
+              Successfully stole the token for {stealOriginalPrice} SOL!
+            </div>
+          ) : transferInProgress ? (
+            <div className="flex flex-col items-center justify-center py-4">
+              <div className="animate-spin text-blue-400 text-5xl mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <p className="text-gray-400">Processing transaction...</p>
+            </div>
+          ) : (
+            <>
+              <p className="mb-4">
+                Enter the amount you want to pay (must be at least {token?.currentPrice} SOL):
+              </p>
+              
+              <input
+                type="number"
+                value={stealAmount}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  if (value >= (token?.currentPrice || 0)) {
+                    setStealAmount(value);
+                    setStealError('');
+                  } else {
+                    setStealError(`Amount must be at least ${token?.currentPrice} SOL`);
+                  }
+                }}
+                min={token?.currentPrice}
+                step="0.1"
+                className="w-full p-2 mb-4 bg-gray-700 rounded border border-gray-600 text-white"
+              />
+              
+              {stealError && (
+                <div className="text-red-400 mb-4">
+                  {stealError}
+                </div>
+              )}
+              
+              <div className="flex justify-end space-x-4">
+                <button
+                  onClick={() => setShowStealModal(false)}
+                  className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSteal}
+                  disabled={transferInProgress || stealAmount < (token?.currentPrice || 0)}
+                  className="px-4 py-2 bg-red-600 rounded hover:bg-red-500 disabled:bg-red-800 disabled:opacity-50"
+                >
+                  Steal
                 </button>
               </div>
             </>
@@ -577,15 +669,15 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
       {/* Add Steal Token button for users who don't own the token */}
       {!isOwner && publicKey && (
         <button 
-          onClick={handleSteal}
-          disabled={transferInProgress}
-          className="w-full mt-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors disabled:bg-red-800 disabled:opacity-50"
+          onClick={() => setShowStealModal(true)}
+          className="w-full mt-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors"
         >
-          {transferInProgress ? 'Transaction in progress...' : `Steal Token for ${stealAmount} SOL`}
+          Steal Token
         </button>
       )}
 
       {showTransferModal && <TransferModal />}
+      {showStealModal && <StealModal />}
     </div>
   );
 }; 

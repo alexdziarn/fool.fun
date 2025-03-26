@@ -101,37 +101,6 @@ export async function insertToken(token: Token) {
 }
 
 /**
- * Updates a token in the database
- * @param tokenId Token ID to update
- * @param token Token data to update
- */
-export async function updateToken(token: Token) {
-  const client = await getPool().connect();
-  try {
-    const query = `
-      UPDATE ${TOKEN_TABLE}
-      SET current_holder = $2, current_price = $3, next_price = $4
-      WHERE id = $1
-      RETURNING *
-    `;
-    const values = [
-      token.id,
-      token.current_holder,
-      token.current_price,
-      token.next_price,
-    ];
-    const result = await client.query(query, values);
-    return result.rows[0];
-  } catch (error) {
-    console.error("Error updating token:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-
-/**
  * Gets a token by its ID
  * @param tokenId Token ID to get
  */
@@ -273,13 +242,11 @@ export async function getTopTokensByPrice(limit = 5) {
 }
 
 /**
- * Updates a token's holder and price
+ * Updates a tokens current_holder, current_price, next_price in the database
  * @param tokenId Token ID to update
- * @param newHolder New holder address
- * @param newPrice New token price
- * @param nextPrice Next token price
+ * @param token Token data to update
  */
-export async function updateTokenHolder(tokenId: string, newHolder: string, newPrice: number, nextPrice: number) {
+export async function updateToken(token: Token) {
   const client = await getPool().connect();
   try {
     const query = `
@@ -288,8 +255,40 @@ export async function updateTokenHolder(tokenId: string, newHolder: string, newP
       WHERE id = $1
       RETURNING *
     `;
+    const values = [
+      token.id,
+      token.current_holder,
+      token.current_price,
+      token.next_price,
+    ];
+    const result = await client.query(query, values);
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error updating token:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Updates a token's holder and price
+ * @param tokenId Token ID to update
+ * @param newHolder New holder address
+ * @param newPrice New token price
+ * @param nextPrice Next token price
+ */
+export async function updateTokenHolder(tokenId: string, newHolder: string) {
+  const client = await getPool().connect();
+  try {
+    const query = `
+      UPDATE ${TOKEN_TABLE}
+      SET current_holder = $2
+      WHERE id = $1
+      RETURNING *
+    `;
     
-    const result = await client.query(query, [tokenId, newHolder, newPrice, nextPrice]);
+    const result = await client.query(query, [tokenId, newHolder]);
     return result.rows[0];
   } catch (error) {
     console.error("Error updating token holder:", error);

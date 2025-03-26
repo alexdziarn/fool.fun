@@ -552,7 +552,7 @@ const resolvers = {
 
         
           // Log successful parsing
-          console.log(`Successfully parsed token: ${name} (${symbol}), ID: ${account.pubkey.toString()}`);
+          // console.log(`Successfully parsed token: ${name} (${symbol}), ID: ${account.pubkey.toString()}`);
 
           const tokenData: Token = {
             id: tokenId,
