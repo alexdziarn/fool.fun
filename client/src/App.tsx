@@ -1,11 +1,10 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import WalletContextProvider from './contexts/WalletContextProvider';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ApolloProvider } from '@apollo/client';
 import { client } from './apollo-client';
 import Login from './components/Login';
-import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import { TokenList } from './components/TokenList';
 import { ProfilePage } from './components/ProfilePage';
@@ -16,9 +15,11 @@ import TokenNotFound from './components/TokenNotFound';
 // Protected route component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
   
   if (!isAuthenticated) {
-    return <Navigate to="/login" />;
+    // Pass the current location to the login page
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
   return <>{children}</>;

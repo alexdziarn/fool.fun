@@ -2,22 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { getStoredPublicKey } from '../utils/auth';
 
 const Login = () => {
   const { connected, publicKey } = useWallet();
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+
+  // Get the intended destination from location state or default to home
+  const from = location.state?.from?.pathname || '/';
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/');
+      navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, from]);
 
   // Auto-login when wallet connects
   useEffect(() => {
@@ -49,9 +53,9 @@ const Login = () => {
     try {
       setIsLoggingIn(true);
       const success = await login();
-      // Navigate to homepage after successful login
+      // Navigate to the intended destination after successful login
       if (success) {
-        navigate('/');
+        navigate(from, { replace: true });
       }
     } catch (error) {
       console.error('Login failed:', error);

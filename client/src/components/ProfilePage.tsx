@@ -23,6 +23,24 @@ const GET_TOKENS_BY_HOLDER = gql`
   }
 `;
 
+const GET_TOKENS_BY_MINTER = gql`
+  query GetTokensByMinter($address: String!) {
+    getTokensByMinter(address: $address) {
+      id
+      name
+      symbol
+      description
+      image
+      currentHolder
+      minter
+      currentPrice
+      nextPrice
+      pubkey
+      createdAt
+    }
+  }
+`;
+
 interface OwnedToken {
   id: string;
   name: string;
@@ -37,6 +55,8 @@ interface OwnedToken {
   createdAt: string;
 }
 
+type TabType = 'owned' | 'minted';
+
 export const ProfilePage = () => {
   const { walletAddress } = useParams<{ walletAddress: string }>();
   const navigate = useNavigate();
@@ -44,8 +64,14 @@ export const ProfilePage = () => {
   const [selectedToken, setSelectedToken] = useState<any>(null);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   const [isCurrentUser, setIsCurrentUser] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('owned');
 
-  const { loading, error, data, refetch } = useQuery(GET_TOKENS_BY_HOLDER, {
+  const { loading: loadingOwned, error: errorOwned, data: ownedData } = useQuery(GET_TOKENS_BY_HOLDER, {
+    variables: { address: walletAddress },
+    skip: !walletAddress,
+  });
+
+  const { loading: loadingMinted, error: errorMinted, data: mintedData } = useQuery(GET_TOKENS_BY_MINTER, {
     variables: { address: walletAddress },
     skip: !walletAddress,
   });
@@ -84,6 +110,9 @@ export const ProfilePage = () => {
     return <div>Please connect your wallet to view your profile.</div>;
   }
 
+  const loading = loadingOwned || loadingMinted;
+  const error = errorOwned || errorMinted;
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -100,73 +129,93 @@ export const ProfilePage = () => {
     );
   }
 
-  const ownedTokens = data?.getTokensByHolder || [];
+  const ownedTokens = ownedData?.getTokensByHolder || [];
+  const mintedTokens = mintedData?.getTokensByMinter || [];
+  const displayedTokens = activeTab === 'owned' ? ownedTokens : mintedTokens;
+  const sortedTokens = sortTokens(displayedTokens);
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold mb-2">
-            {isCurrentUser ? 'My Profile' : 'User Profile'}
-          </h2>
-          <p className="text-gray-400 font-mono">
-            Wallet: {walletAddress}
-          </p>
-        </div>
+        <h1 className="text-3xl font-bold text-white mb-2">
+          {isCurrentUser ? 'Your Profile' : `Profile: ${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`}
+        </h1>
+        <p className="text-gray-400">
+          {isCurrentUser ? 'View and manage your tokens' : 'View tokens owned by this address'}
+        </p>
       </div>
 
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold">
-            {isCurrentUser ? 'My Tokens' : 'User\'s Tokens'}
-          </h3>
-          <div className="flex gap-4 items-center">
-            <SortTokens sortBy={sortBy} onChange={setSortBy} />
-            <button
-              onClick={() => refetch()}
-              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-500 disabled:bg-purple-400"
-              disabled={loading}
-            >
-              {loading ? (
-                <div className="flex items-center">
-                  <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Refreshing...
-                </div>
-              ) : (
-                'Refresh'
-              )}
-            </button>
-          </div>
-        </div>
-        {ownedTokens.length === 0 ? (
-          <p className="text-gray-400">You don't own any tokens yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sortTokens(ownedTokens).map(token => (
-              <div 
-                key={token.id} 
-                className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600 transition-all duration-200"
-                onClick={() => handleViewToken(token.id)}
-              >
-                <img src={token.image} alt={token.name} className="w-full h-48 object-cover rounded-lg mb-4" />
-                <h4 className="text-lg font-bold mb-2">{token.name}</h4>
-                <p className="text-gray-400 mb-2">{token.symbol}</p>
-                <div className="flex justify-between text-sm">
-                  <span>Current Price:</span>
-                  <span className="font-bold">{token.currentPrice} SOL</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Next Price:</span>
-                  <span className="font-bold">{token.nextPrice} SOL</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Tabs */}
+      <div className="border-b border-gray-700 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('owned')}
+            className={`${
+              activeTab === 'owned'
+                ? 'border-purple-500 text-purple-500'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+          >
+            Owned Tokens ({ownedTokens.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('minted')}
+            className={`${
+              activeTab === 'minted'
+                ? 'border-purple-500 text-purple-500'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+          >
+            Minted Tokens ({mintedTokens.length})
+          </button>
+        </nav>
       </div>
+
+      {/* Sort Options */}
+      <div className="mb-6">
+        <SortTokens sortBy={sortBy} onChange={setSortBy} />
+      </div>
+
+      {/* Token Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {sortedTokens.map((token) => (
+          <div
+            key={token.id}
+            className="bg-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer"
+            onClick={() => handleViewToken(token.id)}
+          >
+            <div className="aspect-w-16 aspect-h-9">
+              <img
+                src={token.image}
+                alt={token.name}
+                className="object-cover w-full h-full"
+              />
+            </div>
+            <div className="p-4">
+              <h3 className="text-lg font-semibold text-white mb-2">{token.name}</h3>
+              <p className="text-sm text-gray-400 mb-2">{token.symbol}</p>
+              <div className="flex justify-between items-center">
+                <span className="text-purple-400 font-medium">
+                  {token.currentPrice} SOL
+                </span>
+                <span className="text-sm text-gray-400">
+                  Next: {token.nextPrice} SOL
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {sortedTokens.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-gray-400">
+            {activeTab === 'owned' 
+              ? 'No tokens owned yet' 
+              : 'No tokens minted yet'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }; 

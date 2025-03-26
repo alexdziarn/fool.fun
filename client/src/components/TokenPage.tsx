@@ -129,44 +129,23 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
   const transactionCount = data?.getTokenById?.transactionCount || 0;
   const error = queryError ? queryError.message : '';
 
-  // Immediate redirect if data is loaded but token is null
-  useEffect(() => {
-    if (!isLoading && data && !token) {
-      console.log('Data loaded but token is null, redirecting to token/not-found page');
-      navigate('/token/not-found', { replace: true });
-    }
-  }, [isLoading, data, token, navigate]);
-
-  // Debug logging to help diagnose the issue
-  useEffect(() => {
-    console.log('TokenPage debug:', { 
-      isLoading, 
-      error, 
-      hasToken: !!token, 
-      tokenId,
-      data: data?.getTokenById
-    });
-  }, [isLoading, error, token, tokenId, data]);
-
   // Set initial steal amount when token data is loaded
   useEffect(() => {
     if (token) {
-      // Only set the steal amount if it's less than the current price
-      if (stealAmount < token.currentPrice) {
-        setStealAmount(token.currentPrice);
-      }
+      setStealAmount(token.currentPrice);
     }
   }, [token]);
 
-  // Notify parent when token is not found after loading is complete
+  // Handle navigation for invalid or not found tokens
   useEffect(() => {
-    // Only execute this effect when loading is complete and we have a result
-    if (!isLoading && (error || !token)) {
-      console.log('Redirecting to token/not-found page because token does not exist');
-      // Redirect to token/not-found page
-      navigate('/token/not-found', { replace: true });
+    if (!isLoading) {
+      if (invalidTokenId) {
+        navigate('/token/not-found', { replace: true });
+      } else if (error || !token) {
+        navigate('/token/not-found', { replace: true });
+      }
     }
-  }, [isLoading, error, token, navigate]);
+  }, [isLoading, invalidTokenId, error, token, navigate]);
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
@@ -504,11 +483,6 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
   }
 
   if (error || !token) {
-    console.log('Rendering error state for token not found');
-    // Redirect to token/not-found page
-    navigate('/token/not-found', { replace: true });
-    
-    // Return null to prevent rendering anything while redirecting
     return null;
   }
 
