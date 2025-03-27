@@ -68,6 +68,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
   const { publicKey, sendTransaction } = useWallet();
   const [uploadFileToTempGroup] = useMutation(UPLOAD_FILE_TO_TEMP_GROUP);
   const [isOpen, setIsOpen] = useState(false);
+  const [isProcessingModalOpen, setIsProcessingModalOpen] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [formData, setFormData] = useState<CreateTokenForm>({
     name: '',
@@ -78,6 +79,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
     priceIncrement: 12000,
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [processingTokenId, setProcessingTokenId] = useState<string | null>(null);
   const [errors, setErrors] = useState({
     name: '',
     ticker: '',
@@ -109,6 +111,69 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
       document.body.style.overflow = 'auto';
     };
   }, [isOpen]);
+
+  // Add polling mechanism for token processing
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+    
+    if (processingTokenId) {
+      pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch('http://localhost:4000/graphql', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: `
+                query GetTokenById($id: String!) {
+                  getTokenById(id: $id) {
+                    token {
+                      id
+                      name
+                      symbol
+                      description
+                      image
+                      currentHolder
+                      minter
+                      currentPrice
+                      nextPrice
+                    }
+                  }
+                }
+              `,
+              variables: {
+                id: processingTokenId
+              }
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          
+          if (data.data?.getTokenById?.token) {
+            // Token is available, stop polling and redirect
+            clearInterval(pollInterval);
+            setIsProcessingModalOpen(false);
+            setProcessingTokenId(null);
+            handleSuccess(processingTokenId);
+          }
+        } catch (error) {
+          console.error('Error polling for token:', error);
+          // Don't stop polling on error, let it retry
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [processingTokenId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -250,8 +315,6 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
 
         console.log('Token created! Signature:', signature);
 
-        // transaction scanner and consumer will handle the sync, maybe add function to direct to page of the token
-
         setFormData({
           name: '',
           ticker: '',
@@ -262,7 +325,11 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
         });
         setFileToUpload(null);
         setIsOpen(false);
-        handleSuccess(tokenPDA.toString());
+        
+        // Open processing modal and start polling
+        setIsProcessingModalOpen(true);
+        setProcessingTokenId(tokenPDA.toString());
+        
       } catch (error: any) {
         console.error('Transaction validation failed:', error);
         alert(`Invalid transaction: ${error.message}`);
@@ -281,8 +348,6 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
     } else {
       navigate(`/token/${tokenId}`);
     }
-    
-    setIsOpen(false);
   };
 
   return (
@@ -295,7 +360,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
         Create New Token
       </button>
 
-      {/* Modal Overlay */}
+      {/* Create Token Modal */}
       {isOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4 text-center">
@@ -308,9 +373,11 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
             {/* Modal Content */}
             <div className="transform overflow-hidden rounded-lg bg-gray-800 text-left align-middle shadow-xl transition-all w-full max-w-md">
               <div className="px-6 py-5 border-b border-gray-700">
-                <h3 className="text-lg font-medium text-white">Create New Token</h3>
+                <h3 className="text-lg font-medium leading-6 text-white">
+                  Create New Token
+                </h3>
               </div>
-              
+
               <div className="px-6 py-4">
                 <form onSubmit={handleSubmit}>
                   <div className="mb-4">
@@ -441,6 +508,47 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Processing Modal */}
+      {isProcessingModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4 text-center">
+            {/* Backdrop */}
+            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"></div>
+
+            {/* Modal Content */}
+            <div className="transform overflow-hidden rounded-lg bg-gray-800 text-left align-middle shadow-xl transition-all w-full max-w-md">
+              <div className="px-6 py-5">
+                <div className="flex flex-col items-center justify-center py-8">
+                  <div className="relative">
+                    <div className="animate-spin text-blue-400 text-5xl mb-4">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-4">Processing Your Token</h2>
+                  <div className="text-gray-400 text-center space-y-2">
+                    <p>Your token has been created on the blockchain!</p>
+                    <p>We're now processing it through our system...</p>
+                    <p className="text-sm text-gray-500 mt-4">
+                      Token ID: {processingTokenId?.slice(0, 8)}...{processingTokenId?.slice(-8)}
+                    </p>
+                  </div>
+                  <div className="mt-6 w-full">
+                    <div className="bg-gray-700 rounded-full h-2">
+                      <div className="bg-blue-400 h-2 rounded-full animate-pulse"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

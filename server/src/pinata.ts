@@ -55,7 +55,7 @@ export async function moveFileFromTempToActiveGroup(fileCid: string) {
       groupId: process.env.PINATA_ACTIVE_GROUP_ID || '',
       files: [fileId]
     })
-    console.log(`Successfully moved file ${fileId} from ${process.env.PINATA_TEMP_GROUP_ID} to ${process.env.PINATA_ACTIVE_GROUP_ID}`);
+    // console.log(`Successfully moved file ${fileId} from ${process.env.PINATA_TEMP_GROUP_ID} to ${process.env.PINATA_ACTIVE_GROUP_ID}`);
   } catch (error) {
     console.error('Error moving file to active group:', error);
     throw new Error('Failed to move file to active group');
