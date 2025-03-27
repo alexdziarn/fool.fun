@@ -189,6 +189,9 @@ export const ProfilePage = () => {
                 src={token.image}
                 alt={token.name}
                 className="object-cover w-full h-full"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
+                }}
               />
             </div>
             <div className="p-4">

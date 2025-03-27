@@ -220,7 +220,7 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) =
                   alt={token.name} 
                   className="w-full h-48 object-cover rounded-md mb-4"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Image+Error';
+                    (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
                   }}
                 />
                 <h3 className="text-xl font-bold mb-2">{token.name}</h3>

@@ -498,7 +498,7 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
               alt={token.name} 
               className="w-full h-64 object-cover rounded-lg mb-4"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Image+Error';
+                (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
               }}
             />
             <h1 className="text-2xl font-bold mb-2">{token.name}</h1>
