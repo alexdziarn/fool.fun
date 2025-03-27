@@ -12,6 +12,7 @@ function bufferToFile(buffer: Buffer, filename: string): File {
   return new File([buffer], filename, { type: 'application/octet-stream' });
 }
 
+// DEPRECATED: use uploadToPinataGroup instead
 export async function uploadToPinata(buffer: Buffer, filename: string): Promise<string> {
   try {
     const file = bufferToFile(buffer, filename);
@@ -58,5 +59,22 @@ export async function moveFileFromTempToActiveGroup(fileCid: string) {
   } catch (error) {
     console.error('Error moving file to active group:', error);
     throw new Error('Failed to move file to active group');
+  }
+}
+
+/**
+ * Deletes all files from the temp group that are older than 24 hours
+ */
+export async function deleteOldFilesFromTempGroup() {
+  try {
+    const files = await pinata.files.public.list().group(process.env.PINATA_TEMP_GROUP_ID || '');
+    const oldFiles = files.files.filter(file => new Date(file.created_at) < new Date(Date.now() - 24 * 60 * 60 * 1000));
+    await pinata.groups.public.removeFiles({
+      groupId: process.env.PINATA_TEMP_GROUP_ID || '',
+      files: oldFiles.map(file => file.id)
+    })
+  } catch (error) {
+    console.error('Error deleting old files from temp group:', error);
+    throw new Error('Failed to delete old files from temp group');
   }
 }
