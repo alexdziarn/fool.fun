@@ -7,6 +7,8 @@ import { calculateAmountFromInnerInstructions, getTransactionToFromNew, getTrans
 import { getData, getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
 import bs58 from 'bs58';
 
+const MAX_CONCURRENT_BLOCKS = 5; // Number of blocks to process in parallel
+
 /**
  * Continuously scans blocks for program transactions
  * @param startBlock The block number to start scanning from
@@ -25,20 +27,20 @@ export async function scanBlocks(
   try {
     const connection = new Connection(clusterApiUrl('devnet'));
     let currentBlock = startBlock;
-    let isProcessing = false; // Add lock flag
+    const processingBlocks = new Set<number>();
 
     console.log(`Starting block scanner from block ${startBlock}`);
 
     // Function to process a single block
     async function processBlock(blockNumber: number) {
       // Skip if already processing this block
-      if (isProcessing) {
+      if (processingBlocks.has(blockNumber)) {
         console.log(`Block ${blockNumber} is already being processed, skipping`);
         return;
       }
 
       try {
-        isProcessing = true; // Set lock
+        processingBlocks.add(blockNumber);
         console.log(`Processing block ${blockNumber}`);
 
         // Get the block data
@@ -61,10 +63,8 @@ export async function scanBlocks(
         });
 
         if (programTransactions.length > 0) {
-          // console.log(`Found ${programTransactions.length} program transactions in block ${blockNumber}`);
-          // console.log(programTransactions);
-
-          for (const tx of programTransactions) {
+          // Process transactions in parallel
+          await Promise.all(programTransactions.map(async (tx) => {
             const type = getTransactionType(tx.meta?.logMessages || []);
 
             let token: Token | null = null;
@@ -74,7 +74,9 @@ export async function scanBlocks(
             if (type === DBTransactionType.STEAL || type === DBTransactionType.CREATE) {
               // gets the token data from the transaction
               token = await getSingleTokenDataFromBlockchain(token_id, blockNumber);
+            }
 
+            if (type === DBTransactionType.STEAL) {
               amount = calculateAmountFromInnerInstructions(tx.meta?.innerInstructions);
             }
 
@@ -92,11 +94,9 @@ export async function scanBlocks(
               timestamp: block.blockTime ? new Date(block.blockTime * 1000) : new Date(),
             }
 
-            // console.log("Transaction pre-queue insert", transaction);
-
             // add the transaction to the queue
             await queueTransactionUpdate(transaction);
-          }
+          }));
 
           // Call the callback if provided
           onTransaction?.(blockNumber, programTransactions);
@@ -114,7 +114,7 @@ export async function scanBlocks(
         console.error(`Error processing block ${blockNumber}:`, error);
         throw error;
       } finally {
-        isProcessing = false; // Release lock
+        processingBlocks.delete(blockNumber);
       }
     }
 
@@ -136,7 +136,13 @@ export async function scanBlocks(
           break;
         }
 
-        await processBlock(currentBlock);
+        // Process multiple blocks in parallel
+        const blocksToProcess = Math.min(MAX_CONCURRENT_BLOCKS, currentSlot - currentBlock + 1);
+        const blockPromises = Array.from({ length: blocksToProcess }, (_, i) => 
+          processBlock(currentBlock + i)
+        );
+        
+        await Promise.all(blockPromises);
 
       } catch (error) {
         console.error(`Error processing historical blocks:`, error);
