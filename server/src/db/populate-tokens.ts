@@ -3,6 +3,7 @@ import { PROGRAM_ID } from "../constants";
 import { closePool } from './pool';
 import { insertToken, createTokenTableIfNotExists, getTopTokensByPrice } from './tokens';
 import { Token } from '../types';
+import { moveFileFromTempToActiveGroup } from "../pinata";
 
 
 export async function getData(account: { account: { data: any; }; pubkey: { toString: () => any; }; }): Promise<Token | null> {
@@ -201,16 +202,12 @@ export async function getSingleTokenDataFromBlockchain(tokenId: string, blockNum
 
 /**
  * Populates the tokens table with data from the blockchain
- * @param limit Optional limit on number of tokens to process
- * @param debug Whether to print debug information
+ * @param tokens The tokens to insert into the database
  */
-async function populateTokensTable(limit?: number, debug = false) {
+async function populateTokensTable(tokens: Token[]) {
   try {
     // Ensure the token table exists
     await createTokenTableIfNotExists();
-    
-    // Fetch token data from blockchain
-    const tokens = await getTokenDataFromBlockchain(limit, debug);
     
     if (!tokens || tokens.length === 0) {
       console.log("No token data found on blockchain");
@@ -225,6 +222,15 @@ async function populateTokensTable(limit?: number, debug = false) {
         // Insert token into database
         await insertToken(token);
         console.log(`Inserted token: ${token.name} (${token.id})`);
+        // move the image from the temp group to the active group
+        if (token.image) {
+          const imageCid = token.image.split('/').pop();
+          if (imageCid) {
+            await moveFileFromTempToActiveGroup(imageCid);
+          } else {
+            console.error('Image CID not found');
+          }
+        }
       } catch (err) {
         console.error(`Error inserting token ${token.id}:`, err);
       }
@@ -268,7 +274,8 @@ async function main() {
       console.log('Debug mode enabled - will print detailed information');
     }
     
-    await populateTokensTable(limit, debug);
+    const tokens = await getTokenDataFromBlockchain(limit, debug);
+    await populateTokensTable(tokens);
     console.log("Token population complete");
     
     // Safely close the pool

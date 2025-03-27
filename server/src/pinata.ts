@@ -37,4 +37,26 @@ export async function uploadToPinataGroup(buffer: Buffer, filename: string, grou
     console.error('Error uploading to Pinata group:', error);
     throw new Error('Failed to upload to IPFS group');
   }
-} 
+}
+
+export async function moveFileFromTempToActiveGroup(fileCid: string) {
+  try {
+    // get the file id
+    const files = await pinata.files.public.list().cid(fileCid);
+    const fileId = files.files[0].id;
+
+    // Move the file from temp group to active group
+    await pinata.groups.public.removeFiles({
+      groupId: process.env.PINATA_TEMP_GROUP_ID || '',
+      files: [fileId]
+    })
+    await pinata.groups.public.addFiles({
+      groupId: process.env.PINATA_ACTIVE_GROUP_ID || '',
+      files: [fileId]
+    })
+    console.log(`Successfully moved file ${fileId} from ${process.env.PINATA_TEMP_GROUP_ID} to ${process.env.PINATA_ACTIVE_GROUP_ID}`);
+  } catch (error) {
+    console.error('Error moving file to active group:', error);
+    throw new Error('Failed to move file to active group');
+  }
+}

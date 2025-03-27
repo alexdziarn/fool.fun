@@ -3,6 +3,7 @@ import amqp from 'amqplib';
 import { DBTransaction, DBTransactionType } from '../types';
 import { insertToken, updateToken, updateTokenHolder } from '../db/tokens';
 import { insertTransaction } from '../db/transactions';
+import { moveFileFromTempToActiveGroup } from '../pinata';
 
 let connection: any = null;
 let channel: Channel | null = null;
@@ -63,6 +64,14 @@ async function consumeMessages() {
                     if (transaction.token) {
                         try {
                             await insertToken(transaction.token);
+                            const imageUrl = transaction.token.image;
+                            const imageCid = imageUrl.split('/').pop();
+                            console.log('Image CID:', imageCid);
+                            if (imageCid) {
+                                await moveFileFromTempToActiveGroup(imageCid);
+                            } else {
+                                console.error('Image CID not found');
+                            }
                         } catch (error) {
                             console.error('Error inserting token:', error);
                         }

@@ -15,7 +15,7 @@ import bs58 from 'bs58';
  */
 export async function scanBlocks(
   startBlock: number,
-  delayMs: number = 1000,
+  delayMs: number = 100,
   onTransaction?: (blockNumber: number, transactions: Array<{
     transaction: { message: VersionedMessage; signatures: string[] };
     meta: ConfirmedTransactionMeta | null;
