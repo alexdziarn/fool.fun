@@ -59,7 +59,7 @@ services:
   #   depends_on:
   #     - postgres
 
-  rabbitmq:
+  queue:
     image: rabbitmq:3-management
     hostname: rabbitmq
     ports:

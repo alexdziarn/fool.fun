@@ -82,6 +82,7 @@
     "negotiator": "^0.6.4",
     "node-abort-controller": "^3.1.1",
     "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.11",
     "object-assign": "^4.1.1",
     "object-inspect": "^1.13.3",
     "on-finished": "^2.4.1",
@@ -137,6 +138,7 @@
     "create-scanner-state": "ts-node src/db/scanner-state.ts",
     "scanner": "ts-node src/services/transactionScanner.ts",
     "consumer": "ts-node src/services/transactionConsumer.ts",
+    "email-consumer": "ts-node src/services/emailConsumer.ts",
     "cleanup-temp-files": "ts-node src/scripts/delete-old-files.ts"
   },
   "author": "",
@@ -146,6 +148,7 @@
     "@types/amqplib": "^0.10.7",
     "@types/graphql-upload": "^17.0.0",
     "@types/node": "^22.13.1",
+    "@types/nodemailer": "^6.4.14",
     "@types/pg": "^8.11.11",
     "typescript": "^5.7.3"
   }
