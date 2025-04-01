@@ -1,11 +1,11 @@
 import { Connection, clusterApiUrl, PublicKey, VersionedBlockResponse, ParsedAccountsModeBlockResponse, VersionedMessage } from '@solana/web3.js';
 import { PROGRAM_ID } from '../constants';
-import { queueTransactionUpdate } from './queueService';
-import { DBTransaction, DBTransactionType, Token } from '../types';
+import { queueTransactionUpdate } from './transactionQueueService';
+import { DBTransaction, DBTransactionType, EmailData, Token } from '../types';
 import { Transaction, ConfirmedTransactionMeta, TransactionVersion, TokenBalance } from '@solana/web3.js';
 import { calculateAmountFromInnerInstructions, getTransactionToFromNew, getTransactionType } from '../db/transactions';
 import { getData, getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
-import bs58 from 'bs58';
+import { queueEmail } from './emailQueueService';
 
 const MAX_CONCURRENT_BLOCKS = 5; // Number of blocks to process in parallel
 
@@ -96,6 +96,16 @@ export async function scanBlocks(
 
             // add the transaction to the queue
             await queueTransactionUpdate(transaction);
+
+            // add to email queue
+            const emailData: EmailData = {
+              from,
+              to,
+              type: type as 'steal' | 'transfer' | 'create',
+              token_id,
+              amount,
+            }
+            await queueEmail(emailData);
           }));
 
           // Call the callback if provided

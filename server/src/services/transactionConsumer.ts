@@ -5,10 +5,11 @@ import { insertToken, updateToken, updateTokenHolder } from '../db/tokens';
 import { insertTransaction } from '../db/transactions';
 import { moveFileFromTempToActiveGroup } from '../pinata';
 
+const queue = 'transaction_queue';
 let connection: any = null;
 let channel: Channel | null = null;
 
-async function connectQueue() {
+async function connectTransactionQueue() {
     try {
         // Use credentials from environment variables or defaults
         const username = process.env.RABBITMQ_USER || 'admin';
@@ -23,7 +24,6 @@ async function connectQueue() {
         channel = await connection.createChannel();
         if (!channel) throw new Error('Failed to create channel');
 
-        const queue = 'transaction_queue';
         await channel.assertQueue(queue, { durable: true });
 
         console.log('Connected to RabbitMQ');
@@ -37,10 +37,9 @@ async function connectQueue() {
 async function consumeMessages() {
     try {
         if (!channel) {
-            channel = await connectQueue();
+            channel = await connectTransactionQueue();
         }
 
-        const queue = 'transaction_queue';
         await channel.consume(queue, async (data: ConsumeMessage | null) => {
             if (!data) return;
 
@@ -121,7 +120,7 @@ async function consumeMessages() {
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-    console.log('Shutting down consumer...');
+    console.log('Shutting down transaction consumer...');
     if (channel) await channel.close();
     if (connection) {
         try {

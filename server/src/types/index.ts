@@ -94,3 +94,11 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
 } 
+
+export interface EmailData {
+  from: string;
+  to: string;
+  type: 'steal' | 'transfer' | 'create';
+  token_id: string;
+  amount: number | null;
+}

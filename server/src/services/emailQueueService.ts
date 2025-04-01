@@ -1,5 +1,6 @@
 import amqp from 'amqplib';
 import type { Channel } from 'amqplib';
+import { EmailData } from '../types';
 
 const QUEUE_NAME = 'email_queue';
 let connection: any = null;
@@ -28,14 +29,6 @@ async function setupQueue() {
     console.error('Error setting up email queue:', error);
     throw error;
   }
-}
-
-interface EmailData {
-  to: string;
-  subject: string;
-  content: string;
-  template?: string;
-  data?: Record<string, any>;
 }
 
 // Add an email to the queue

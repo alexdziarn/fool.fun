@@ -51,6 +51,10 @@ async function main() {
     // Run populate-transactions script
     console.log("Populating transactions table...");
     await runScript(path.join(__dirname, 'populate-transactions.ts'));
+
+    // Run populate-accounts script
+    console.log("Populating accounts table...");
+    await runScript(path.join(__dirname, 'populate-accounts.ts'));
     
     console.log("Database population completed successfully");
   } catch (error) {
