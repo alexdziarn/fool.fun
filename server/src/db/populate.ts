@@ -53,7 +53,7 @@ async function main() {
     await runScript(path.join(__dirname, 'populate-transactions.ts'));
 
 
-    // TODO: complete functionality of emailing system
+    // TODO: complete functionality of emailing system, implement smtp server
     // Run populate-accounts script
     // console.log("Populating accounts table...");
     // await runScript(path.join(__dirname, 'populate-accounts.ts'));

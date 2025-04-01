@@ -2,8 +2,7 @@ import amqp from 'amqplib';
 import type { Channel } from 'amqplib';
 import nodemailer from 'nodemailer';
 import { EmailData } from '../types';
-import { Account, getAccountById, getEmailPreferences } from '../db/accounts';
-import { getPool } from '../db/pool';
+import { getAccountById, getEmailPreferences } from '../db/accounts';
 
 const queue = 'email_queue';
 let connection: any = null;

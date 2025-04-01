@@ -226,7 +226,7 @@ async function populateTokensTable(tokens: Token[]) {
         if (token.image) {
           const imageCid = token.image.split('/').pop();
           if (imageCid) {
-            await moveFileFromTempToActiveGroup(imageCid);
+            moveFileFromTempToActiveGroup(imageCid);
           } else {
             console.error('Image CID not found');
           }
