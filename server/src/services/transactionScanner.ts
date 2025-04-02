@@ -12,12 +12,10 @@ const MAX_CONCURRENT_BLOCKS = 5; // Number of blocks to process in parallel
 /**
  * Continuously scans blocks for program transactions
  * @param startBlock The block number to start scanning from
- * @param delayMs Delay when caught up to current slot in milliseconds (default: 1000)
  * @param onTransaction Callback function called when a program transaction is found
  */
 export async function scanBlocks(
   startBlock: number,
-  delayMs: number = 100,
   onTransaction?: (blockNumber: number, transactions: Array<{
     transaction: { message: VersionedMessage; signatures: string[] };
     meta: ConfirmedTransactionMeta | null;
@@ -41,44 +39,64 @@ export async function scanBlocks(
 
       try {
         processingBlocks.add(blockNumber);
-        console.log(`Processing block ${blockNumber}`);
+        // console.log(`[Block ${blockNumber}] Starting processing`);
 
-        // Get the block data
-        const block = await connection.getBlock(blockNumber, {
-          maxSupportedTransactionVersion: 0,
-          commitment: 'confirmed'
-        });
+        // Get the block data with retries
+        let block = null;
+        let retries = 3;
+        while (retries > 0 && !block) {
+          try {
+            block = await connection.getBlock(blockNumber, {
+              maxSupportedTransactionVersion: 0,
+              commitment: 'confirmed'
+            });
+          } catch (error: any) {
+            if (error?.code === -32004) {
+              // Block not available yet, wait and retry
+              await new Promise(resolve => setTimeout(resolve, 100));
+              retries--;
+            } else {
+              throw error;
+            }
+          }
+        }
 
         if (!block) {
-          console.log(`No block data found for block ${blockNumber}`);
+          console.log(`[Block ${blockNumber}] No block data found after retries`);
           return;
         }
 
         // Filter transactions that involve our program
         const programTransactions = block.transactions.filter(tx => {
           // Check if any instruction in the transaction involves our program
-          return tx.transaction.message.compiledInstructions.some(ix => 
+          return tx.transaction.message.compiledInstructions.some(ix =>
             tx.transaction.message.staticAccountKeys[ix.programIdIndex].equals(PROGRAM_ID)
           );
         });
 
         if (programTransactions.length > 0) {
+          console.log(`[Block ${blockNumber}] Found ${programTransactions.length} program transactions`);
           // Process transactions in parallel
           await Promise.all(programTransactions.map(async (tx) => {
             const type = getTransactionType(tx.meta?.logMessages || []);
+            // console.log(`[Block ${blockNumber}] Processing ${type} transaction ${tx.transaction.signatures[0]}`);
 
             let token: Token | null = null;
             let amount: number | null = null;
-            const {from, to, token_id} = getTransactionToFromNew(type, tx);
+            const { from, to, token_id } = getTransactionToFromNew(type, tx);
 
-            if (type === DBTransactionType.STEAL || type === DBTransactionType.CREATE) {
-              // gets the token data from the transaction
-              token = await getSingleTokenDataFromBlockchain(token_id, blockNumber);
-            }
+            // Batch token and amount calculations
+            const [tokenData, calculatedAmount] = await Promise.all([
+              (type === DBTransactionType.STEAL || type === DBTransactionType.CREATE) 
+                ? getSingleTokenDataFromBlockchain(token_id, blockNumber)
+                : Promise.resolve(null),
+              type === DBTransactionType.STEAL 
+                ? Promise.resolve(calculateAmountFromInnerInstructions(tx.meta?.innerInstructions))
+                : Promise.resolve(null)
+            ]);
 
-            if (type === DBTransactionType.STEAL) {
-              amount = calculateAmountFromInnerInstructions(tx.meta?.innerInstructions);
-            }
+            token = tokenData;
+            amount = calculatedAmount;
 
             // start creating a new transaction object
             const transaction: DBTransaction = {
@@ -94,31 +112,27 @@ export async function scanBlocks(
               timestamp: block.blockTime ? new Date(block.blockTime * 1000) : new Date(),
             }
 
-            // add the transaction to the queue
-            await queueTransactionUpdate(transaction);
-
-            // add to email queue
-            const emailData: EmailData = {
-              from,
-              to,
-              type: type as 'steal' | 'transfer' | 'create',
-              token_id,
-              amount,
-            }
-            await queueEmail(emailData);
+            // Batch queue operations
+            await Promise.all([
+              queueTransactionUpdate(transaction),
+              queueEmail({
+                from,
+                to,
+                type: type as 'steal' | 'transfer' | 'create',
+                token_id,
+                amount,
+              })
+            ]);
           }));
 
           // Call the callback if provided
           onTransaction?.(blockNumber, programTransactions);
         }
-        
-        currentBlock++;
 
       } catch (error: any) {
         // Handle skipped blocks or missing blocks due to ledger jumps
         if (error?.code === -32007) {
           console.log(`Block ${blockNumber} was skipped or missing due to ledger jump, continuing to next block`);
-          currentBlock++;
           return;
         }
         console.error(`Error processing block ${blockNumber}:`, error);
@@ -129,36 +143,32 @@ export async function scanBlocks(
     }
 
     // Subscribe to slot changes for new blocks
-    const slotSubscription = connection.onSlotChange((slotInfo) => {
-      // When we get a new slot, process the current block
-      processBlock(currentBlock).catch(error => {
-        console.error(`Error processing block ${currentBlock}:`, error);
-      });
-    });
-
-    // Continuously process blocks until we catch up
-    while (true) {
-      try {
-        const currentSlot = await connection.getSlot();
-
-        if (currentBlock > currentSlot) {
-          console.log(`Caught up to current slot ${currentSlot}, waiting for new blocks...`);
-          break;
-        }
-
-        // Process multiple blocks in parallel
-        const blocksToProcess = Math.min(MAX_CONCURRENT_BLOCKS, currentSlot - currentBlock + 1);
-        const blockPromises = Array.from({ length: blocksToProcess }, (_, i) => 
-          processBlock(currentBlock + i)
-        );
+    const slotSubscription = connection.onSlotChange(async (slotInfo) => {
+      const newSlot = slotInfo.slot;
+      if (newSlot > currentBlock) {
+        // Only process blocks that are a few slots behind to ensure they're confirmed
+        const confirmedSlot = newSlot - 2; // Wait for 2 slots to ensure confirmation
+        const blocksToProcess = Math.min(MAX_CONCURRENT_BLOCKS, confirmedSlot - currentBlock);
         
-        await Promise.all(blockPromises);
-
-      } catch (error) {
-        console.error(`Error processing historical blocks:`, error);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        if (blocksToProcess > 0) {
+          console.log(`New slot ${newSlot} detected, processing blocks ${currentBlock} to ${currentBlock + blocksToProcess - 1}`);
+          
+          // Process multiple blocks in parallel
+          const blockPromises = Array.from({ length: blocksToProcess }, (_, i) => 
+            processBlock(currentBlock + i)
+          );
+          
+          try {
+            await Promise.all(blockPromises);
+            currentBlock += blocksToProcess;
+          } catch (error) {
+            // If any block fails, just increment currentBlock to avoid getting stuck
+            console.log(`Some blocks failed to process, continuing from next block`);
+            currentBlock += blocksToProcess;
+          }
+        }
       }
-    }
+    });
 
     // Keep the process running
     await new Promise(() => { });
@@ -171,30 +181,28 @@ export async function scanBlocks(
 
 /**
  * Starts scanning from the latest confirmed block
- * @param delayMs Delay when caught up to current slot in milliseconds (default: 1000)
  * @param onTransaction Callback function called when a program transaction is found
  */
 export async function startScanningFromLatest(
-    delayMs: number = 1000,
-    onTransaction?: (blockNumber: number, transactions: Array<{
-      transaction: { message: VersionedMessage; signatures: string[] };
-      meta: ConfirmedTransactionMeta | null;
-      version?: TransactionVersion;
-    }>) => void
+  onTransaction?: (blockNumber: number, transactions: Array<{
+    transaction: { message: VersionedMessage; signatures: string[] };
+    meta: ConfirmedTransactionMeta | null;
+    version?: TransactionVersion;
+  }>) => void
 ) {
-    try {
-        const connection = new Connection(clusterApiUrl('devnet'));
-        const currentSlot = await connection.getSlot('confirmed');
-        
-        console.log(`Starting scanner from latest confirmed block ${currentSlot}`);
-        
-        // Start scanning from the latest block
-        await scanBlocks(currentSlot, delayMs, onTransaction);
-        
-    } catch (error) {
-        console.error('Error starting scanner from latest block:', error);
-        throw error;
-    }
+  try {
+    const connection = new Connection(clusterApiUrl('devnet'));
+    const currentSlot = await connection.getSlot('confirmed');
+    
+    console.log(`Starting scanner from current slot ${currentSlot}`);
+
+    // Start scanning from the current slot
+    await scanBlocks(currentSlot, onTransaction);
+
+  } catch (error) {
+    console.error('Error starting scanner from latest block:', error);
+    throw error;
+  }
 }
 
 // Only run this code if the file is being executed directly
