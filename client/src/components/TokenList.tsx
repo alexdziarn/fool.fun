@@ -216,7 +216,7 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) =
                 className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600"
               >
                 <img 
-                  src={token.image} 
+                  src={`${token.image}?img-width=400&img-height=300`} 
                   alt={token.name} 
                   className="w-full h-48 object-cover rounded-md mb-4"
                   onError={(e) => {
