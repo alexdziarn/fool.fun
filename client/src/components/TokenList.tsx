@@ -1,6 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { Connection, clusterApiUrl } from '@solana/web3.js';
-import { PROGRAM_ID } from '../config/constants';
+import React, { useState } from 'react';
 import { SortTokens, SortOption } from './SortTokens';
 import { useQuery } from '@apollo/client';
 import { GET_TOKEN_PAGE } from '../graphql/queries';
@@ -28,56 +26,19 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
-  const [isFetching, setIsFetching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Match the server's default page size
-  const PAGE_SIZE = 5;
-
   // GraphQL query for paginated tokens
-  const { loading, error: graphqlError, data } = useQuery(GET_TOKEN_PAGE, {
+  const { loading, error: graphqlError, data, refetch } = useQuery(GET_TOKEN_PAGE, {
     variables: { page: currentPage },
-    // No need to specify pageSize since we're using the server default
     fetchPolicy: 'cache-and-network',
   });
 
-  // Legacy fetch function - can be used for refresh or if you need to bypass GraphQL
-  const fetchTokens = async () => {
-    if (isFetching) return;
-    
-    try {
-      setIsFetching(true);
-      setError(null);
-      setRefreshing(true);
-      
-      const connection = new Connection(clusterApiUrl('devnet'));
-      
-      // Get all program accounts in a single request
-      const accounts = await connection.getProgramAccounts(PROGRAM_ID);
-      console.log(`Found ${accounts.length} tokens`);
-      
-
-  // Initial fetch
-  useEffect(() => {
-    // We can rely on the GraphQL query's initial load
-    // fetchTokens();
-  }, []);
-
   const sortTokens = (tokensToSort: Token[]) => {
     return [...tokensToSort].sort((a, b) => {
-      switch (sortBy) {
-        case 'price-asc':
-          return a.currentPrice - b.currentPrice;
-        case 'price-desc':
-          return b.currentPrice - a.currentPrice;
-        case 'latest-buy':
-          return 0; // Not implemented yet
-        case 'creation-date':
-          return (b.createdAt || 0) - (a.createdAt || 0);
-        default:
-          return 0;
-      }
+      return sortBy === 'price-asc' 
+        ? a.currentPrice - b.currentPrice 
+        : b.currentPrice - a.currentPrice;
     });
   };
 
@@ -96,7 +57,7 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   // Get tokens from GraphQL response
   const tokens = data?.getTokenPage?.tokens || [];
   const totalCount = data?.getTokenPage?.totalCount || 0;
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const totalPages = Math.ceil(totalCount / 5); // Using server's default page size
 
   
   const handleViewToken = (tokenId: string) => {
@@ -114,7 +75,10 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
         <div className="flex gap-4 items-center">
           <SortTokens sortBy={sortBy} onChange={setSortBy} />
           <button
-            onClick={fetchTokens}
+            onClick={() => {
+              setRefreshing(true);
+              refetch().finally(() => setRefreshing(false));
+            }}
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-purple-400"
             disabled={refreshing || loading}
           >
@@ -133,7 +97,6 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
         </div>
       </div>
 
-      {error && <div className="text-red-500 mb-4">{error}</div>}
       {graphqlError && <div className="text-red-500 mb-4">Error: {graphqlError.message}</div>}
 
       {tokens.length === 0 && !loading ? (
