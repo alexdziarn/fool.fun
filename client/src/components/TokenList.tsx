@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Connection, PublicKey, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, clusterApiUrl } from '@solana/web3.js';
 import { PROGRAM_ID } from '../config/constants';
 import { SortTokens, SortOption } from './SortTokens';
 import { useQuery } from '@apollo/client';
@@ -21,11 +21,10 @@ interface Token {
 }
 
 export interface TokenListProps {
-  onViewProfile?: (address: string) => void;
   onViewToken?: (tokenId: string) => void;
 }
 
-export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) => {
+export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
@@ -37,7 +36,7 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) =
   const PAGE_SIZE = 5;
 
   // GraphQL query for paginated tokens
-  const { loading, error: graphqlError, data, refetch } = useQuery(GET_TOKEN_PAGE, {
+  const { loading, error: graphqlError, data } = useQuery(GET_TOKEN_PAGE, {
     variables: { page: currentPage },
     // No need to specify pageSize since we're using the server default
     fetchPolicy: 'cache-and-network',
@@ -58,62 +57,6 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) =
       const accounts = await connection.getProgramAccounts(PROGRAM_ID);
       console.log(`Found ${accounts.length} tokens`);
       
-      // Process all accounts
-      const tokensData = accounts.map(({ pubkey, account }) => {
-        try {
-          const data = account.data;
-          let offset = 8; // Skip discriminator
-          
-          // Helper to read string
-          const readString = () => {
-            const len = data.readUInt32LE(offset);
-            offset += 4;
-            const str = data.slice(offset, offset + len).toString();
-            offset += len;
-            return str;
-          };
-          
-          const name = readString();
-          const symbol = readString();
-          const description = readString();
-          const image = readString();
-          const currentHolder = new PublicKey(data.slice(offset, offset + 32)).toString();
-          offset += 32;
-          const minter = new PublicKey(data.slice(offset, offset + 32)).toString();
-          offset += 64; // skip minter and dev
-          
-          const currentPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
-          offset += 8;
-          const nextPrice = Number(data.readBigUInt64LE(offset)) / LAMPORTS_PER_SOL;
-          
-          return {
-            id: pubkey.toString(),
-            name,
-            symbol,
-            description,
-            image,
-            currentHolder,
-            minter,
-            currentPrice,
-            nextPrice,
-            pubkey: pubkey.toString()
-          };
-        } catch (err) {
-          console.error(`Error parsing token ${pubkey.toString()}:`, err);
-          return null;
-        }
-      }).filter(token => token !== null) as Token[];
-      
-      // Refresh the GraphQL query instead of setting tokens directly
-      refetch();
-    } catch (err) {
-      console.error('Error fetching tokens:', err);
-      setError('Failed to load tokens. Please try again.');
-    } finally {
-      setIsFetching(false);
-      setRefreshing(false);
-    }
-  };
 
   // Initial fetch
   useEffect(() => {
@@ -138,10 +81,6 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) =
     });
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
-  };
-
   const handleNextPage = () => {
     if (data?.getTokenPage?.hasNextPage) {
       setCurrentPage(currentPage + 1);
@@ -159,13 +98,6 @@ export const TokenList = ({ onViewProfile, onViewToken }: TokenListProps = {}) =
   const totalCount = data?.getTokenPage?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  const handleViewProfile = (address: string) => {
-    if (onViewProfile) {
-      onViewProfile(address);
-    } else {
-      navigate(`/profile/${address}`);
-    }
-  };
   
   const handleViewToken = (tokenId: string) => {
     if (onViewToken) {
