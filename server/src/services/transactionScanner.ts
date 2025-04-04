@@ -39,7 +39,7 @@ export async function scanBlocks(
 
       try {
         processingBlocks.add(blockNumber);
-        // console.log(`[Block ${blockNumber}] Starting processing`);
+        console.log(`[Block ${blockNumber}] Starting processing`);
 
         // Get the block data with retries
         let block = null;
@@ -133,45 +133,31 @@ export async function scanBlocks(
         // Handle skipped blocks or missing blocks due to ledger jumps
         if (error?.code === -32007) {
           console.log(`Block ${blockNumber} was skipped or missing due to ledger jump, continuing to next block`);
-          return;
+        } else {
+          console.error(`Error processing block ${blockNumber}:`, error);
         }
-        console.error(`Error processing block ${blockNumber}:`, error);
-        throw error;
       } finally {
         processingBlocks.delete(blockNumber);
       }
     }
 
+
+    const queue: number[] = [];
     // Subscribe to slot changes for new blocks
     const slotSubscription = connection.onSlotChange(async (slotInfo) => {
       const newSlot = slotInfo.slot;
-      if (newSlot > currentBlock) {
-        // Only process blocks that are a few slots behind to ensure they're confirmed
-        const confirmedSlot = newSlot - 2; // Wait for 2 slots to ensure confirmation
-        const blocksToProcess = Math.min(MAX_CONCURRENT_BLOCKS, confirmedSlot - currentBlock);
-        
-        if (blocksToProcess > 0) {
-          console.log(`New slot ${newSlot} detected, processing blocks ${currentBlock} to ${currentBlock + blocksToProcess - 1}`);
-          
-          // Process multiple blocks in parallel
-          const blockPromises = Array.from({ length: blocksToProcess }, (_, i) => 
-            processBlock(currentBlock + i)
-          );
-          
-          try {
-            await Promise.all(blockPromises);
-            currentBlock += blocksToProcess;
-          } catch (error) {
-            // If any block fails, just increment currentBlock to avoid getting stuck
-            console.log(`Some blocks failed to process, continuing from next block`);
-            currentBlock += blocksToProcess;
-          }
+      queue.push(newSlot);
+      // if (currentBlock < newSlot - 5 && processingBlocks.size === 0) {
+      
+      if (queue.length > 5) {
+        console.log(`Processing blocks ${queue[0]} to ${queue[4]}`);
+        const blockPromises: Promise<void>[] = [];
+        for (let i = 0; i < 5; i++) {
+          blockPromises.push(processBlock(queue.shift()!));
         }
+        await Promise.all(blockPromises);
       }
     });
-
-    // Keep the process running
-    await new Promise(() => { });
 
   } catch (error) {
     console.error('Fatal error in block scanner:', error);
