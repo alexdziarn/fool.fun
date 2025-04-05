@@ -143,19 +143,59 @@ export async function scanBlocks(
 
 
     const queue: number[] = [];
+    const failedBlocks = new Set<number>();
+    const MAX_RETRIES = 3;
+
     // Subscribe to slot changes for new blocks
     const slotSubscription = connection.onSlotChange(async (slotInfo) => {
       const newSlot = slotInfo.slot;
       queue.push(newSlot);
-      // if (currentBlock < newSlot - 5 && processingBlocks.size === 0) {
       
-      if (queue.length > 5) {
+      if (queue.length >= 5) {
         console.log(`Processing blocks ${queue[0]} to ${queue[4]}`);
-        const blockPromises: Promise<void>[] = [];
-        for (let i = 0; i < 5; i++) {
-          blockPromises.push(processBlock(queue.shift()!));
+        
+        // Process blocks in parallel but track failures
+        const blockPromises = queue.splice(0, 5).map(async (blockNumber) => {
+          let retryCount = 0;
+          let success = false;
+
+          while (retryCount < MAX_RETRIES && !success) {
+            try {
+              await processBlock(blockNumber);
+              success = true;
+              failedBlocks.delete(blockNumber);
+            } catch (error) {
+              retryCount++;
+              if (retryCount === MAX_RETRIES) {
+                console.error(`Failed to process block ${blockNumber} after ${MAX_RETRIES} retries:`, error);
+                failedBlocks.add(blockNumber);
+              } else {
+                console.log(`Retrying block ${blockNumber} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+              }
+            }
+          }
+        });
+
+        // Wait for all blocks to complete processing
+        await Promise.allSettled(blockPromises);
+
+        // If we have any failed blocks, try to reprocess them in the background
+        if (failedBlocks.size > 0) {
+          console.log(`Attempting to reprocess ${failedBlocks.size} failed blocks in background`);
+          const failedBlocksArray = Array.from(failedBlocks);
+          // Process failed blocks in parallel but don't wait for completion
+          Promise.allSettled(failedBlocksArray.map(async (blockNumber) => {
+            try {
+              await processBlock(blockNumber);
+              failedBlocks.delete(blockNumber);
+            } catch (error) {
+              console.error(`Failed to reprocess block ${blockNumber}:`, error);
+            }
+          })).catch(error => {
+            console.error('Error in background reprocessing:', error);
+          });
         }
-        await Promise.all(blockPromises);
       }
     });
 
