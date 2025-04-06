@@ -24,7 +24,6 @@ export async function scanBlocks(
 ) {
   try {
     const connection = new Connection(clusterApiUrl('devnet'));
-    let currentBlock = startBlock;
     const processingBlocks = new Set<number>();
 
     console.log(`Starting block scanner from block ${startBlock}`);
@@ -43,26 +42,24 @@ export async function scanBlocks(
 
         // Get the block data with retries
         let block = null;
-        let retries = 3;
-        while (retries > 0 && !block) {
-          try {
-            block = await connection.getBlock(blockNumber, {
-              maxSupportedTransactionVersion: 0,
-              commitment: 'confirmed'
-            });
-          } catch (error: any) {
-            if (error?.code === -32004) {
-              // Block not available yet, wait and retry
-              await new Promise(resolve => setTimeout(resolve, 100));
-              retries--;
-            } else {
-              throw error;
-            }
+        try {
+          block = await connection.getBlock(blockNumber, {
+            maxSupportedTransactionVersion: 0,
+            commitment: 'confirmed'
+          });
+        } catch (error: any) {
+          if (error?.code === -32004) {
+            // Block not available yet, wait and retry
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } else {
+            throw error;
           }
         }
 
         if (!block) {
-          console.log(`[Block ${blockNumber}] No block data found after retries`);
+          console.log(`[Block ${blockNumber}] No block data found after retries, adding back to queue`);
+          // Add the block back to the beginning of the queue
+          queue.unshift(blockNumber);
           return;
         }
 
@@ -115,13 +112,13 @@ export async function scanBlocks(
             // Batch queue operations
             await Promise.all([
               queueTransactionUpdate(transaction),
-              queueEmail({
-                from,
-                to,
-                type: type as 'steal' | 'transfer' | 'create',
-                token_id,
-                amount,
-              })
+              // queueEmail({
+              //   from,
+              //   to,
+              //   type: type as 'steal' | 'transfer' | 'create',
+              //   token_id,
+              //   amount,
+              // })
             ]);
           }));
 
@@ -144,7 +141,6 @@ export async function scanBlocks(
 
     const queue: number[] = [];
     const failedBlocks = new Set<number>();
-    const MAX_RETRIES = 3;
 
     // Subscribe to slot changes for new blocks
     const slotSubscription = connection.onSlotChange(async (slotInfo) => {
@@ -156,46 +152,16 @@ export async function scanBlocks(
         
         // Process blocks in parallel but track failures
         const blockPromises = queue.splice(0, 5).map(async (blockNumber) => {
-          let retryCount = 0;
-          let success = false;
-
-          while (retryCount < MAX_RETRIES && !success) {
-            try {
-              await processBlock(blockNumber);
-              success = true;
-              failedBlocks.delete(blockNumber);
-            } catch (error) {
-              retryCount++;
-              if (retryCount === MAX_RETRIES) {
-                console.error(`Failed to process block ${blockNumber} after ${MAX_RETRIES} retries:`, error);
-                failedBlocks.add(blockNumber);
-              } else {
-                console.log(`Retrying block ${blockNumber} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
-              }
-            }
+          try {
+            await processBlock(blockNumber);
+          } catch (error) {
+            console.error(`Failed to process block ${blockNumber}:`, error);
+            failedBlocks.add(blockNumber);
           }
         });
 
         // Wait for all blocks to complete processing
         await Promise.allSettled(blockPromises);
-
-        // If we have any failed blocks, try to reprocess them in the background
-        if (failedBlocks.size > 0) {
-          console.log(`Attempting to reprocess ${failedBlocks.size} failed blocks in background`);
-          const failedBlocksArray = Array.from(failedBlocks);
-          // Process failed blocks in parallel but don't wait for completion
-          Promise.allSettled(failedBlocksArray.map(async (blockNumber) => {
-            try {
-              await processBlock(blockNumber);
-              failedBlocks.delete(blockNumber);
-            } catch (error) {
-              console.error(`Failed to reprocess block ${blockNumber}:`, error);
-            }
-          })).catch(error => {
-            console.error('Error in background reprocessing:', error);
-          });
-        }
       }
     });
 
