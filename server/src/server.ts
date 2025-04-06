@@ -422,8 +422,8 @@ const resolvers = {
 
         return { url };
       } catch (error) {
-        console.error('Group upload error:', error);
-        throw new GraphQLError('File upload to temp group failed', {
+        console.error('File upload failed', error);
+        throw new GraphQLError('File upload failed', {
           extensions: { code: 'INTERNAL_SERVER_ERROR' }
         });
       }

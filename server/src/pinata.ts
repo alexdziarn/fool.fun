@@ -28,6 +28,12 @@ export async function uploadToPinata(buffer: Buffer, filename: string): Promise<
 
 export async function uploadToPinataGroup(buffer: Buffer, filename: string, groupId: string): Promise<string> {
   try {
+    // Check file size (10 MB limit)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB in bytes
+    if (buffer.length > MAX_FILE_SIZE) {
+      throw new Error(`File size (${(buffer.length / (1024 * 1024)).toFixed(2)} MB) exceeds the 10 MB limit`);
+    }
+
     // Upload the file first
     const file = bufferToFile(buffer, filename);
     const result = await pinata.upload.public.file(file).group(groupId);
