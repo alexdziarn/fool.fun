@@ -350,6 +350,24 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
     }
   };
 
+  // Add function to check if form is valid
+  const isFormValid = () => {
+    return (
+      formData.name.length > 0 &&
+      formData.name.length <= 32 &&
+      formData.ticker.length > 0 &&
+      formData.ticker.length <= 8 &&
+      formData.description.length > 0 &&
+      formData.description.length <= 200 &&
+      fileToUpload !== null &&
+      formData.initialPrice >= 0.1 &&
+      formData.initialPrice <= 1 &&
+      formData.priceIncrement >= 12000 &&
+      formData.priceIncrement <= 20000 &&
+      publicKey !== null
+    );
+  };
+
   return (
     <div>
       <button
@@ -491,7 +509,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
                     </button>
                     <button 
                       type="submit"
-                      disabled={isLoading}
+                      disabled={!isFormValid() || isLoading}
                       className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-500 transition-colors disabled:bg-indigo-800 disabled:opacity-70"
                     >
                       {isLoading ? (

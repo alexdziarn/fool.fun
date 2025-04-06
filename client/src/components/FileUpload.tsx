@@ -6,10 +6,27 @@ interface FileUploadProps {
 
 const FileUpload = ({ onFileSelect }: FileUploadProps) => {
   const [preview, setPreview] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Clear previous error
+    setError(null);
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file (JPEG, PNG, GIF, etc.)');
+      return;
+    }
+
+    // Check file size (10MB limit)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File size (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the 10 MB limit`);
+      return;
+    }
 
     onFileSelect(file);
     const previewUrl = URL.createObjectURL(file);
@@ -39,6 +56,9 @@ const FileUpload = ({ onFileSelect }: FileUploadProps) => {
           hover:file:bg-gradient-to-r hover:file:from-indigo-100 hover:file:to-cyan-100
           transition-all cursor-pointer"
       />
+      {error && (
+        <p className="text-red-500 text-sm mt-1">{error}</p>
+      )}
       {preview && (
         <div className="space-y-4">
           <img 
