@@ -48,6 +48,8 @@ const typeDefs = `#graphql
     currentPrice: Float!
     nextPrice: Float!
     pubkey: String
+    lastSteal: String
+    lastCreate: String
   }
 
   type TokenPage {
@@ -155,6 +157,28 @@ const resolvers = {
         const totalCount = parseInt(countResult.rows[0].count);
         const hasNextPage = offset + result.rows.length < totalCount;
 
+        
+        // go through each row and get the latest steal transaction and the latest create transaction
+        // add a new fields to the row called last steal, and created
+        
+        for (const row of result.rows) {
+          const latestStealTransacion = await pool.query(
+            `SELECT timestamp FROM transactions 
+            WHERE token_id = $1 AND type = $2 
+            ORDER BY timestamp DESC 
+            LIMIT 1`, 
+            [row.id, 'steal']
+          );
+          const createTransaction = await pool.query(
+            `SELECT timestamp FROM transactions 
+            WHERE token_id = $1 AND type = $2 
+            ORDER BY timestamp DESC 
+            LIMIT 1`, 
+            [row.id, 'create']
+          );
+          row.lastSteal = latestStealTransacion.rows[0]?.timestamp ? new Date(latestStealTransacion.rows[0].timestamp).toISOString() : null;
+          row.lastCreate = createTransaction.rows[0]?.timestamp ? new Date(createTransaction.rows[0].timestamp).toISOString() : null;
+        }
         return {
           tokens: result.rows,
           totalCount,

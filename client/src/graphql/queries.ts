@@ -14,6 +14,8 @@ export const GET_TOKEN_PAGE = gql`
         currentHolder
         minter
         pubkey
+        lastSteal
+        lastCreate
       }
       totalCount
       hasNextPage

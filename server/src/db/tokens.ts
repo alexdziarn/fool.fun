@@ -23,7 +23,9 @@ export async function createTokenTableIfNotExists() {
         minter TEXT NOT NULL,
         current_price DECIMAL(20, 9) NOT NULL,
         next_price DECIMAL(20, 9) NOT NULL,
-        pubkey TEXT
+        pubkey TEXT,
+        last_steal TIMESTAMP,
+        last_create TIMESTAMP
       )
     `);
     
@@ -56,12 +58,10 @@ export async function createTokenTableIfNotExists() {
 export async function insertToken(token: Token) {
   const client = await getPool().connect();
   try {
-
-    // may need to fix the ON CONFLICT to update the token if it already exists
     const query = `
       INSERT INTO ${TOKEN_TABLE}
-      (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey, last_steal, last_create)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         symbol = EXCLUDED.symbol,
@@ -69,7 +69,9 @@ export async function insertToken(token: Token) {
         image = EXCLUDED.image,
         current_holder = EXCLUDED.current_holder,
         current_price = EXCLUDED.current_price,
-        next_price = EXCLUDED.next_price
+        next_price = EXCLUDED.next_price,
+        last_steal = EXCLUDED.last_steal,
+        last_create = EXCLUDED.last_create
       RETURNING *
     `;
     
@@ -84,6 +86,8 @@ export async function insertToken(token: Token) {
       token.current_price,
       token.next_price,
       token.pubkey,
+      token.last_steal,
+      token.last_create,
     ];
     
     const result = await client.query(query, values);

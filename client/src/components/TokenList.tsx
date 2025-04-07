@@ -4,6 +4,19 @@ import { useQuery } from '@apollo/client';
 import { GET_TOKEN_PAGE } from '../graphql/queries';
 import { useNavigate } from 'react-router-dom';
 
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+};
+
 interface Token {
   id: string;
   name: string;
@@ -15,6 +28,8 @@ interface Token {
   currentPrice: number;
   nextPrice: number;
   pubkey?: string;
+  lastSteal?: string;
+  lastCreate?: string;
 }
 
 export interface TokenListProps {
@@ -130,6 +145,10 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
                       <span className="text-xs text-gray-400">
                         Next: {token.nextPrice} SOL
                       </span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2">
+                      <div>Last stolen: {token.lastSteal ? formatDate(token.lastSteal) : 'Never'}</div>
+                      <div>Created: {token.lastCreate ? formatDate(token.lastCreate) : 'Unknown'}</div>
                     </div>
                   </div>
                 </div>

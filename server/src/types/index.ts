@@ -10,6 +10,8 @@ export interface Token {
   current_price: number;        // Current token price in SOL
   next_price: number;           // Next token price in SOL
   pubkey: string;              // Token public key
+  last_steal?: string;         // Timestamp of last steal
+  last_create?: string;        // Timestamp of creation
 }
 
 export enum DBTransactionType {
