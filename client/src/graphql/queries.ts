@@ -1,8 +1,8 @@
 import { gql } from "@apollo/client";
 
 export const GET_TOKEN_PAGE = gql`
-  query GetTokenPage($page: Int!, $pageSize: Int) {
-    getTokenPage(page: $page, pageSize: $pageSize) {
+  query GetTokenPage($page: Int!, $pageSize: Int = 12, $sortBy: SortOption) {
+    getTokenPage(page: $page, pageSize: $pageSize, sortBy: $sortBy) {
       tokens {
         id
         name
@@ -35,7 +35,6 @@ export const GET_TOKEN_BY_ID = gql`
         currentPrice
         nextPrice
         pubkey
-        createdAt
       }
       transactions {
         id

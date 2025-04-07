@@ -40,10 +40,6 @@ export async function createTokenTableIfNotExists() {
       CREATE INDEX IF NOT EXISTS idx_tokens_minter ON ${TOKEN_TABLE} (minter)
     `);
     
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON ${TOKEN_TABLE} (created_at DESC)
-    `);
-    
     console.log(`Table ${TOKEN_TABLE} created successfully`);
   } catch (error) {
     console.error("Error creating token table:", error);

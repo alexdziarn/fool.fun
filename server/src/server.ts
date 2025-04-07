@@ -59,8 +59,6 @@ const typeDefs = `#graphql
   enum SortOption {
     PRICE_ASC
     PRICE_DESC
-    LATEST_PURCHASE
-    CREATION_DATE
   }
 
   type Transaction {
@@ -92,7 +90,7 @@ const typeDefs = `#graphql
 
   type Query {
     hello: String
-    getTokenPage(page: Int!, pageSize: Int = 5): TokenPage!
+    getTokenPage(page: Int!, pageSize: Int = 12, sortBy: SortOption): TokenPage!
     getTokenById(id: String!): TokenWithTransactions
     getTokensByHolder(address: String!): [Token!]!
     getTokensByMinter(address: String!): [Token!]!
@@ -126,66 +124,45 @@ const resolvers = {
   Upload: GraphQLUpload,
   Query: {
     hello: () => 'Hello World!',
-    getTokenPage: async (_: any, { page, pageSize }: { page: number, pageSize: number }) => {
-      // Validate input
-      if (page < 1) {
-        throw new GraphQLError('Page number must be greater than 0', {
-          extensions: { code: 'BAD_USER_INPUT' }
-        });
-      }
-
-      const client = await pool.connect();
+    getTokenPage: async (_: unknown, { page = 1, pageSize = 12, sortBy }: { page: number, pageSize: number, sortBy?: 'PRICE_ASC' | 'PRICE_DESC' }) => {
       try {
-        // Calculate offset
         const offset = (page - 1) * pageSize;
         
-        // Get tokens for the requested page
-        const tokensQuery = {
-          text: `
-            SELECT 
-              id, 
-              name, 
-              symbol, 
-              description, 
-              image, 
-              current_holder as "currentHolder", 
-              minter, 
-              current_price as "currentPrice", 
-              next_price as "nextPrice", 
-              pubkey
-            FROM tokens
-            ORDER BY current_price DESC
-            LIMIT $1 OFFSET $2
-          `,
-          values: [pageSize, offset]
-        };
-        
-        // Get total count for pagination info
-        const countQuery = {
-          text: 'SELECT COUNT(*) FROM tokens'
-        };
-        
-        const [tokensResult, countResult] = await Promise.all([
-          client.query(tokensQuery),
-          client.query(countQuery)
-        ]);
-        
-        const tokens = tokensResult.rows;
+        let orderBy = 'current_price DESC';
+        if (sortBy === 'PRICE_ASC') {
+          orderBy = 'current_price ASC';
+        }
+
+        const result = await pool.query(
+          `SELECT 
+            id,
+            name,
+            symbol,
+            description,
+            image,
+            current_price as "currentPrice",
+            next_price as "nextPrice",
+            current_holder as "currentHolder",
+            minter,
+            pubkey
+          FROM tokens
+          ORDER BY ${orderBy}
+          LIMIT $1 OFFSET $2`,
+          [pageSize, offset]
+        );
+
+        const countResult = await pool.query('SELECT COUNT(*) FROM tokens');
         const totalCount = parseInt(countResult.rows[0].count);
-        const hasNextPage = offset + tokens.length < totalCount;
-        
+        const hasNextPage = offset + result.rows.length < totalCount;
+
         return {
-          tokens,
+          tokens: result.rows,
           totalCount,
           hasNextPage
         };
       } catch (error) {
         console.error('Error fetching token page:', error);
-        throw new GraphQLError('Failed to fetch tokens', {
-          extensions: { code: 'INTERNAL_SERVER_ERROR' }
-        });
-      } finally {
-        client.release();
+        throw new Error('Failed to fetch tokens');
       }
     },
     getTokenById: async (_: any, { id }: { id: string }) => {
@@ -304,7 +281,7 @@ const resolvers = {
               pubkey
             FROM tokens
             WHERE current_holder = $1
-            ORDER BY created_at DESC
+            ORDER BY current_price DESC
           `,
           values: [address]
         };
@@ -338,7 +315,7 @@ const resolvers = {
               pubkey
             FROM tokens
             WHERE minter = $1
-            ORDER BY created_at DESC
+            ORDER BY current_price DESC
           `,
           values: [address]
         };

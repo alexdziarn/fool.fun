@@ -24,21 +24,21 @@ export interface TokenListProps {
 export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   
   // GraphQL query for paginated tokens
   const { loading, error: graphqlError, data, refetch } = useQuery(GET_TOKEN_PAGE, {
-    variables: { page: currentPage },
+    variables: { 
+      page: currentPage,
+      sortBy: sortBy === 'price-desc' ? 'PRICE_DESC' : 'PRICE_ASC'
+    },
     fetchPolicy: 'cache-and-network',
   });
 
-  const sortTokens = (tokensToSort: Token[]) => {
-    return [...tokensToSort].sort((a, b) => {
-      return sortBy === 'price-asc' 
-        ? a.currentPrice - b.currentPrice 
-        : b.currentPrice - a.currentPrice;
-    });
+  const handleSortChange = (newSort: SortOption) => {
+    setSortBy(newSort);
+    setCurrentPage(1); // Reset to first page when changing sort
   };
 
   const handleNextPage = () => {
@@ -56,7 +56,7 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   // Get tokens from GraphQL response
   const tokens = data?.getTokenPage?.tokens || [];
   const totalCount = data?.getTokenPage?.totalCount || 0;
-  const totalPages = Math.ceil(totalCount / 5); // Using server's default page size
+  const totalPages = Math.ceil(totalCount / 12);
 
   
   const handleViewToken = (tokenId: string) => {
@@ -72,7 +72,7 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Available Tokens</h1>
         <div className="flex gap-4 items-center">
-          <SortTokens sortBy={sortBy} onChange={setSortBy} />
+          <SortTokens sortBy={sortBy} onChange={handleSortChange} />
           <button
             onClick={() => {
               setRefreshing(true);
@@ -102,38 +102,39 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
         <div className="text-center py-8">No tokens found</div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-8">
-            {sortTokens(tokens).map((token) => (
-              <div 
-                key={token.id}
-                onClick={() => handleViewToken(token.id)}
-                className="bg-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-600"
-              >
-                <img 
-                  src={`${token.image}?img-width=400&img-height=300`} 
-                  alt={token.name} 
-                  className="w-full h-48 object-cover rounded-md mb-4"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
-                  }}
-                />
-                <div className="p-3">
-                  <h3 className="text-sm font-semibold text-white mb-1 truncate">{token.name}</h3>
-                  <p className="text-xs text-gray-400 mb-1">{token.symbol}</p>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-white text-sm font-medium">
-                      {token.currentPrice} SOL
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      Next: {token.nextPrice} SOL
-                    </span>
+          <div className="max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+              {tokens.map((token: Token) => (
+                <div 
+                  key={token.id}
+                  onClick={() => handleViewToken(token.id)}
+                  className="bg-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer h-64 w-64"
+                >
+                  <div className="h-32">
+                    <img 
+                      src={token.image} 
+                      alt={token.name} 
+                      className="object-contain w-full h-full bg-gray-800"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
+                      }}
+                    />
+                  </div>
+                  <div className="p-3">
+                    <h3 className="text-sm font-semibold text-white mb-1 truncate">{token.name}</h3>
+                    <p className="text-xs text-gray-400 mb-1">{token.symbol}</p>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-white text-sm font-medium">
+                        {token.currentPrice} SOL
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        Next: {token.nextPrice} SOL
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-2 space-y-1">
-                  <p>Holder: {token.currentHolder.slice(0, 4)}...{token.currentHolder.slice(-4)}</p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
           
           {/* Enhanced pagination controls */}
