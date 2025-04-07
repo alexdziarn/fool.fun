@@ -82,6 +82,7 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
   const [stealError, setStealError] = useState('');
   const [stealSuccess, setStealSuccess] = useState(false);
   const [stealOriginalPrice, setStealOriginalPrice] = useState(0);
+  const [showImageModal, setShowImageModal] = useState(false);
 
   // Validate token ID format
   useEffect(() => {
@@ -446,6 +447,38 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
     );
   };
 
+  // Add ImageModal component
+  const ImageModal = () => {
+    if (!showImageModal) return null;
+    
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+        onClick={() => setShowImageModal(false)}
+      >
+        <div className="relative max-w-4xl w-full p-4">
+          <button 
+            onClick={() => setShowImageModal(false)}
+            className="absolute top-2 right-2 text-white hover:text-gray-300"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img 
+            src={token.image} 
+            alt={token.name} 
+            className="max-h-[80vh] w-auto mx-auto"
+            onClick={(e) => e.stopPropagation()}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -493,14 +526,19 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
         {/* Token Info */}
         <div className="md:col-span-1">
           <div className="bg-gray-800 rounded-lg p-6">
-            <img 
-              src={token.image} 
-              alt={token.name} 
-              className="w-full h-64 object-cover rounded-lg mb-4"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
-              }}
-            />
+            <div 
+              className="cursor-pointer"
+              onClick={() => setShowImageModal(true)}
+            >
+              <img 
+                src={token.image} 
+                alt={token.name} 
+                className="w-full h-64 object-contain bg-gray-800 rounded-lg mb-4"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
+                }}
+              />
+            </div>
             <h1 className="text-2xl font-bold mb-2">{token.name}</h1>
             <p className="text-gray-400 mb-4">{token.symbol}</p>
             <p className="mb-6">{token.description}</p>
@@ -652,6 +690,7 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
 
       {showTransferModal && <TransferModal />}
       {showStealModal && <StealModal />}
+      <ImageModal />
     </div>
   );
 }; 

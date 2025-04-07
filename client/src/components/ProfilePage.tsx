@@ -177,31 +177,31 @@ export const ProfilePage = () => {
       </div>
 
       {/* Token Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {sortedTokens.map((token) => (
           <div
             key={token.id}
-            className="bg-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer"
+            className="bg-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer h-64"
             onClick={() => handleViewToken(token.id)}
           >
-            <div className="aspect-w-16 aspect-h-9">
+            <div className="h-32">
               <img
                 src={token.image}
                 alt={token.name}
-                className="object-cover w-full h-full"
+                className="object-contain w-full h-full bg-gray-800"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
                 }}
               />
             </div>
-            <div className="p-4">
-              <h3 className="text-lg font-semibold text-white mb-2">{token.name}</h3>
-              <p className="text-sm text-gray-400 mb-2">{token.symbol}</p>
+            <div className="p-3">
+              <h3 className="text-sm font-semibold text-white mb-1 truncate">{token.name}</h3>
+              <p className="text-xs text-gray-400 mb-1">{token.symbol}</p>
               <div className="flex justify-between items-center">
-                <span className="text-purple-400 font-medium">
+                <span className="text-white text-sm font-medium">
                   {token.currentPrice} SOL
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-xs text-gray-400">
                   Next: {token.nextPrice} SOL
                 </span>
               </div>
