@@ -4,42 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { TokenPage } from './TokenPage';
 import { SortTokens, SortOption } from './SortTokens';
 import { gql, useQuery } from '@apollo/client';
-
-const GET_TOKENS_BY_HOLDER = gql`
-  query GetTokensByHolder($address: String!) {
-    getTokensByHolder(address: $address) {
-      id
-      name
-      symbol
-      description
-      image
-      currentHolder
-      minter
-      currentPrice
-      nextPrice
-      pubkey
-      createdAt
-    }
-  }
-`;
-
-const GET_TOKENS_BY_MINTER = gql`
-  query GetTokensByMinter($address: String!) {
-    getTokensByMinter(address: $address) {
-      id
-      name
-      symbol
-      description
-      image
-      currentHolder
-      minter
-      currentPrice
-      nextPrice
-      pubkey
-      createdAt
-    }
-  }
-`;
+import { GET_TOKENS_BY_HOLDER, GET_TOKENS_BY_MINTER } from '../graphql/queries';
 
 interface OwnedToken {
   id: string;
