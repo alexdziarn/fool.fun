@@ -57,4 +57,38 @@ export const UPLOAD_FILE_TO_GROUP = gql`
       url
     }
   }
+`;
+
+export const GET_TOKENS_BY_HOLDER = gql`
+  query GetTokensByHolder($address: String!) {
+    getTokensByHolder(address: $address) {
+      id
+      name
+      symbol
+      description
+      image
+      currentHolder
+      minter
+      currentPrice
+      nextPrice
+      pubkey
+    }
+  }
+`;
+
+export const GET_TOKENS_BY_MINTER = gql`
+  query GetTokensByMinter($address: String!) {
+    getTokensByMinter(address: $address) {
+      id
+      name
+      symbol
+      description
+      image
+      currentHolder
+      minter
+      currentPrice
+      nextPrice
+      pubkey
+    }
+  }
 `; 

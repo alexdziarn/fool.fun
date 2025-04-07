@@ -48,7 +48,6 @@ const typeDefs = `#graphql
     currentPrice: Float!
     nextPrice: Float!
     pubkey: String
-    createdAt: String
   }
 
   type TokenPage {
@@ -153,8 +152,7 @@ const resolvers = {
               minter, 
               current_price as "currentPrice", 
               next_price as "nextPrice", 
-              pubkey,
-              created_at as "createdAt"
+              pubkey
             FROM tokens
             ORDER BY current_price DESC
             LIMIT $1 OFFSET $2
@@ -206,8 +204,7 @@ const resolvers = {
               minter, 
               current_price as "currentPrice", 
               next_price as "nextPrice", 
-              pubkey,
-              created_at as "createdAt"
+              pubkey
             FROM tokens
             WHERE id = $1
           `,
@@ -304,8 +301,7 @@ const resolvers = {
               minter, 
               current_price as "currentPrice", 
               next_price as "nextPrice", 
-              pubkey,
-              created_at as "createdAt"
+              pubkey
             FROM tokens
             WHERE current_holder = $1
             ORDER BY created_at DESC
@@ -339,8 +335,7 @@ const resolvers = {
               minter, 
               current_price as "currentPrice", 
               next_price as "nextPrice", 
-              pubkey,
-              created_at as "createdAt"
+              pubkey
             FROM tokens
             WHERE minter = $1
             ORDER BY created_at DESC

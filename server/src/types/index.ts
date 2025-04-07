@@ -9,7 +9,7 @@ export interface Token {
   minter: string;               // Token minter address
   current_price: number;        // Current token price in SOL
   next_price: number;           // Next token price in SOL
-  pubkey: string;               // Token public key
+  pubkey: string;              // Token public key
 }
 
 export enum DBTransactionType {

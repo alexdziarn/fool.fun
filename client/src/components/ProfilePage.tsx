@@ -52,7 +52,6 @@ interface OwnedToken {
   currentPrice: number;
   nextPrice: number;
   pubkey: string;
-  createdAt: string;
 }
 
 type TabType = 'owned' | 'minted';
@@ -95,7 +94,7 @@ export const ProfilePage = () => {
         case 'latest-buy':
           return 0; // We'll implement this later
         case 'creation-date':
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return 0; // We'll implement this later
         default:
           return 0;
       }
@@ -177,18 +176,18 @@ export const ProfilePage = () => {
       </div>
 
       {/* Token Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {sortedTokens.map((token) => (
           <div
             key={token.id}
-            className="bg-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer h-64"
+            className="bg-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer"
             onClick={() => handleViewToken(token.id)}
           >
-            <div className="h-32">
+            <div className="aspect-w-16 aspect-h-9">
               <img
                 src={token.image}
                 alt={token.name}
-                className="object-contain w-full h-full bg-gray-800"
+                className="object-cover w-full h-full"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://placehold.co/400x300/png?text=Image+Error';
                 }}
@@ -197,7 +196,7 @@ export const ProfilePage = () => {
             <div className="p-3">
               <h3 className="text-sm font-semibold text-white mb-1 truncate">{token.name}</h3>
               <p className="text-xs text-gray-400 mb-1">{token.symbol}</p>
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mb-1">
                 <span className="text-white text-sm font-medium">
                   {token.currentPrice} SOL
                 </span>
