@@ -4,7 +4,6 @@ import WalletContextProvider from './contexts/WalletContextProvider';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ApolloProvider } from '@apollo/client';
 import { client } from './apollo-client';
-import Login from './components/Login';
 import Layout from './components/Layout';
 import { TokenList } from './components/TokenList';
 import { ProfilePage } from './components/ProfilePage';
@@ -33,13 +32,10 @@ function App() {
           <Router>
             <div className="min-h-screen bg-gray-800 text-gray-200">
               <Routes>
-                <Route path="/login" element={<Login />} />
                 <Route path="/" element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <TokenList />
-                    </Layout>
-                  </ProtectedRoute>
+                  <Layout>
+                    <TokenList />
+                  </Layout>
                 } />
                 <Route path="/profile/:walletAddress" element={
                   <ProtectedRoute>
@@ -54,11 +50,9 @@ function App() {
                   </Layout>
                 } />
                 <Route path="/token/:tokenId" element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <TokenPage />
-                    </Layout>
-                  </ProtectedRoute>
+                  <Layout>
+                    <TokenPage />
+                  </Layout>
                 } />
                 <Route path="/not-found" element={
                   <Layout>

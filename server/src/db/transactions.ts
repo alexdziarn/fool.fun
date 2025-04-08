@@ -161,11 +161,7 @@ export async function createTransactionTableIfNotExists() {
         amount DECIMAL(20, 9),
         timestamp TIMESTAMP NOT NULL,
         block_number BIGINT,
-        success BOOLEAN NOT NULL DEFAULT TRUE,
-        CONSTRAINT fk_token
-          FOREIGN KEY(token_id)
-          REFERENCES tokens(id)
-          ON DELETE CASCADE
+        success BOOLEAN NOT NULL DEFAULT TRUE
       )
     `);
     

@@ -23,9 +23,7 @@ export async function createTokenTableIfNotExists() {
         minter TEXT NOT NULL,
         current_price DECIMAL(20, 9) NOT NULL,
         next_price DECIMAL(20, 9) NOT NULL,
-        pubkey TEXT,
-        last_steal TIMESTAMP,
-        last_create TIMESTAMP
+        pubkey TEXT
       )
     `);
     
@@ -60,8 +58,8 @@ export async function insertToken(token: Token) {
   try {
     const query = `
       INSERT INTO ${TOKEN_TABLE}
-      (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey, last_steal, last_create)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      (id, name, symbol, description, image, current_holder, minter, current_price, next_price, pubkey)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         symbol = EXCLUDED.symbol,
@@ -69,9 +67,7 @@ export async function insertToken(token: Token) {
         image = EXCLUDED.image,
         current_holder = EXCLUDED.current_holder,
         current_price = EXCLUDED.current_price,
-        next_price = EXCLUDED.next_price,
-        last_steal = EXCLUDED.last_steal,
-        last_create = EXCLUDED.last_create
+        next_price = EXCLUDED.next_price
       RETURNING *
     `;
     
@@ -85,9 +81,7 @@ export async function insertToken(token: Token) {
       token.minter,
       token.current_price,
       token.next_price,
-      token.pubkey,
-      token.last_steal,
-      token.last_create,
+      token.pubkey
     ];
     
     const result = await client.query(query, values);
