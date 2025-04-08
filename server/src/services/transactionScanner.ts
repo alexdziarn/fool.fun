@@ -151,7 +151,7 @@ export async function scanBlocks(
         console.log(`Processing blocks ${queue[0]} to ${queue[4]}`);
         
         // Process blocks in parallel but track failures
-        const blockPromises = queue.splice(0, 5).map(async (blockNumber) => {
+        const blockPromises = queue.splice(0, 5).sort((a, b) => a - b).map(async (blockNumber) => {
           try {
             await processBlock(blockNumber);
           } catch (error) {
