@@ -73,8 +73,10 @@ export async function moveFileFromTempToActiveGroup(fileCid: string) {
  */
 export async function deleteOldFilesFromTempGroup() {
   try {
-    const files = await pinata.files.public.list().group(process.env.PINATA_TEMP_GROUP_ID || '');
-    const oldFiles = files.files.filter(file => new Date(file.created_at) < new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const filesInTempGroup = await pinata.files.public.list().group(process.env.PINATA_TEMP_GROUP_ID || '');
+    const filesInActiveGroup = await pinata.files.public.list().group(process.env.PINATA_ACTIVE_GROUP_ID || '');
+    const filesInActiveGroupSet = new Set(filesInActiveGroup.files.map(file => file.id));
+    const oldFiles = filesInTempGroup.files.filter(file => new Date(file.created_at) < new Date(Date.now() - 24 * 60 * 60 * 1000) && !filesInActiveGroupSet.has(file.id));
     await pinata.groups.public.removeFiles({
       groupId: process.env.PINATA_TEMP_GROUP_ID || '',
       files: oldFiles.map(file => file.id)
