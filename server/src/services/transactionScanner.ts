@@ -30,14 +30,7 @@ export async function scanBlocks(
 
     // Function to process a single block
     async function processBlock(blockNumber: number) {
-      // Skip if already processing this block
-      if (processingBlocks.has(blockNumber)) {
-        console.log(`Block ${blockNumber} is already being processed, skipping`);
-        return;
-      }
-
       try {
-        processingBlocks.add(blockNumber);
         console.log(`[Block ${blockNumber}] Starting processing`);
 
         // Get the block data with retries
@@ -133,8 +126,6 @@ export async function scanBlocks(
         } else {
           console.error(`Error processing block ${blockNumber}:`, error);
         }
-      } finally {
-        processingBlocks.delete(blockNumber);
       }
     }
 

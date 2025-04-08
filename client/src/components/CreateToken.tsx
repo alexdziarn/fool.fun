@@ -12,7 +12,6 @@ import {
   clusterApiUrl,
   LAMPORTS_PER_SOL
 } from '@solana/web3.js';
-import { IDL } from '../idl/steal_token';
 import { PROGRAM_ID, DEV_WALLET } from '../config/constants';
 import { useNavigate } from 'react-router-dom';
 
