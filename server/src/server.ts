@@ -61,6 +61,8 @@ const typeDefs = `#graphql
   enum SortOption {
     PRICE_ASC
     PRICE_DESC
+    LATEST_PURCHASE
+    CREATION_DATE
   }
 
   type Transaction {
@@ -92,7 +94,7 @@ const typeDefs = `#graphql
 
   type Query {
     hello: String
-    getTokenPage(page: Int!, pageSize: Int = 12, sortBy: SortOption): TokenPage!
+    getTokenPage(page: Int!, pageSize: Int = 12, sortBy: SortOption, search: String): TokenPage!
     getTokenById(id: String!): TokenWithTransactions
     getTokensByHolder(address: String!): [Token!]!
     getTokensByMinter(address: String!): [Token!]!
@@ -126,59 +128,68 @@ const resolvers = {
   Upload: GraphQLUpload,
   Query: {
     hello: () => 'Hello World!',
-    getTokenPage: async (_: unknown, { page = 1, pageSize = 12, sortBy }: { page: number, pageSize: number, sortBy?: 'PRICE_ASC' | 'PRICE_DESC' }) => {
+    getTokenPage: async (_: unknown, { page = 1, pageSize = 12, sortBy, search }: { page: string | number, pageSize: string | number, sortBy?: 'PRICE_ASC' | 'PRICE_DESC' | 'LATEST_PURCHASE' | 'CREATION_DATE', search?: string }) => {
       try {
-        const offset = (page - 1) * pageSize;
+        const pageSizeNum = Number(pageSize);
+        const pageNum = Number(page);
+        const offsetNum = (pageNum - 1) * pageSizeNum;
         
         let orderBy = 'current_price DESC';
         if (sortBy === 'PRICE_ASC') {
           orderBy = 'current_price ASC';
+        } else if (sortBy === 'LATEST_PURCHASE') {
+          orderBy = '(SELECT MAX(timestamp) FROM transactions WHERE token_id = t.id AND type = \'steal\') DESC NULLS LAST';
+        } else if (sortBy === 'CREATION_DATE') {
+          orderBy = '(SELECT timestamp FROM transactions WHERE token_id = t.id AND type = \'create\' LIMIT 1) DESC NULLS LAST';
         }
 
-        const result = await pool.query(
-          `SELECT 
-            id,
-            name,
-            symbol,
-            description,
-            image,
-            current_price as "currentPrice",
-            next_price as "nextPrice",
-            current_holder as "currentHolder",
-            minter,
-            pubkey
-          FROM tokens
-          ORDER BY ${orderBy}
-          LIMIT $1 OFFSET $2`,
-          [pageSize, offset]
-        );
+        // Base query without search
+        let baseQuery = {
+          text: `
+            SELECT 
+              t.id,
+              t.name,
+              t.symbol,
+              t.description,
+              t.image,
+              t.current_holder as "currentHolder",
+              t.minter,
+              t.current_price as "currentPrice",
+              t.next_price as "nextPrice",
+              t.pubkey,
+              (SELECT MAX(timestamp) FROM transactions WHERE token_id = t.id AND type = 'steal') as "lastSteal",
+              (SELECT timestamp FROM transactions WHERE token_id = t.id AND type = 'create' LIMIT 1) as "lastCreate",
+              (SELECT COUNT(*) FROM transactions WHERE token_id = t.id AND type = 'steal') as steal_count
+            FROM tokens t
+            ${search ? 'WHERE LOWER(t.name) LIKE LOWER($3) OR LOWER(t.symbol) LIKE LOWER($3)' : ''}
+            ORDER BY ${orderBy}
+            LIMIT $1 OFFSET $2
+          `,
+          values: search ? [pageSizeNum, offsetNum, `%${search}%`] : [pageSizeNum, offsetNum]
+        };
 
-        const countResult = await pool.query('SELECT COUNT(*) FROM tokens');
+        const result = await pool.query(baseQuery);
+
+        // Count query
+        const countQuery = {
+          text: `SELECT COUNT(*) FROM tokens t ${search ? 'WHERE LOWER(t.name) LIKE LOWER($1) OR LOWER(t.symbol) LIKE LOWER($1)' : ''}`,
+          values: search ? [`%${search}%`] : []
+        };
+
+        const countResult = await pool.query(countQuery);
         const totalCount = parseInt(countResult.rows[0].count);
-        const hasNextPage = offset + result.rows.length < totalCount;
+        const hasNextPage = offsetNum + result.rows.length < totalCount;
 
-        
-        // go through each row and get the latest steal transaction and the latest create transaction
-        // add a new fields to the row called last steal, and created
-        
-        for (const row of result.rows) {
-          const latestStealTransacion = await pool.query(
-            `SELECT timestamp FROM transactions 
-            WHERE token_id = $1 AND type = $2 
-            ORDER BY timestamp DESC 
-            LIMIT 1`, 
-            [row.id, 'steal']
-          );
-          const createTransaction = await pool.query(
-            `SELECT timestamp FROM transactions 
-            WHERE token_id = $1 AND type = $2 
-            ORDER BY timestamp DESC 
-            LIMIT 1`, 
-            [row.id, 'create']
-          );
-          row.lastSteal = latestStealTransacion.rows[0]?.timestamp ? new Date(latestStealTransacion.rows[0].timestamp).toISOString() : null;
-          row.lastCreate = createTransaction.rows[0]?.timestamp ? new Date(createTransaction.rows[0].timestamp).toISOString() : null;
-        }
+        // Format dates as ISO strings
+        result.rows.forEach(row => {
+          if (row.lastSteal) {
+            row.lastSteal = new Date(row.lastSteal).toISOString();
+          }
+          if (row.lastCreate) {
+            row.lastCreate = new Date(row.lastCreate).toISOString();
+          }
+        });
+
         return {
           tokens: result.rows,
           totalCount,

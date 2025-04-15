@@ -16,8 +16,8 @@ export const SortTokens = ({ sortBy, onChange }: SortTokensProps) => {
         onChange={(e) => onChange(e.target.value as SortOption)}
         className="bg-gray-700 text-white rounded px-3 py-1 text-sm border border-gray-600 focus:outline-none focus:border-purple-500"
       >
-        <option value="price-asc">Price (Low to High)</option>
         <option value="price-desc">Price (High to Low)</option>
+        <option value="price-asc">Price (Low to High)</option>
         <option value="latest-buy">Latest Purchase</option>
         <option value="creation-date">Creation Date</option>
       </select>

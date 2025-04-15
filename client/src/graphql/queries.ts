@@ -1,18 +1,18 @@
 import { gql } from "@apollo/client";
 
 export const GET_TOKEN_PAGE = gql`
-  query GetTokenPage($page: Int!, $pageSize: Int = 12, $sortBy: SortOption) {
-    getTokenPage(page: $page, pageSize: $pageSize, sortBy: $sortBy) {
+  query GetTokenPage($page: Int!, $sortBy: SortOption, $search: String) {
+    getTokenPage(page: $page, sortBy: $sortBy, search: $search) {
       tokens {
         id
         name
         symbol
         description
         image
-        currentPrice
-        nextPrice
         currentHolder
         minter
+        currentPrice
+        nextPrice
         pubkey
         lastSteal
         lastCreate
@@ -90,6 +90,17 @@ export const GET_TOKENS_BY_MINTER = gql`
       currentPrice
       nextPrice
       pubkey
+    }
+  }
+`;
+
+export const GET_SORT_OPTIONS = gql`
+  query GetSortOptions {
+    __type(name: "SortOption") {
+      enumValues {
+        name
+        description
+      }
     }
   }
 `; 

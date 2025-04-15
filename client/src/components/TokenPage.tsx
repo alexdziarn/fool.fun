@@ -539,6 +539,28 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
                 }}
               />
             </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col items-center gap-2 mb-4">
+              {isOwner && (
+                <button 
+                  onClick={() => setShowTransferModal(true)}
+                  className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                >
+                  Transfer Token
+                </button>
+              )}
+
+              {!isOwner && publicKey && (
+                <button 
+                  onClick={() => setShowStealModal(true)}
+                  className="px-8 py-3 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors"
+                >
+                  Steal Token
+                </button>
+              )}
+            </div>
+
             <h1 className="text-2xl font-bold mb-2">{token.name}</h1>
             <p className="text-gray-400 mb-4">{token.symbol}</p>
             <p className="mb-6">{token.description}</p>
@@ -668,26 +690,6 @@ export const TokenPage = ({ tokenId: propTokenId, onBack, onViewProfile, onUpdat
         </div>
       </div>
       
-      {/* Action buttons and modals would go here */}
-      {isOwner && (
-        <button 
-          onClick={() => setShowTransferModal(true)}
-          className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
-        >
-          Transfer Token
-        </button>
-      )}
-
-      {/* Add Steal Token button for users who don't own the token */}
-      {!isOwner && publicKey && (
-        <button 
-          onClick={() => setShowStealModal(true)}
-          className="w-full mt-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors"
-        >
-          Steal Token
-        </button>
-      )}
-
       {showTransferModal && <TransferModal />}
       {showStealModal && <StealModal />}
       <ImageModal />

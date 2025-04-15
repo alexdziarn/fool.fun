@@ -68,6 +68,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
   const [uploadFileToTempGroup] = useMutation(UPLOAD_FILE_TO_TEMP_GROUP);
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessingModalOpen, setIsProcessingModalOpen] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [formData, setFormData] = useState<CreateTokenForm>({
     name: '',
@@ -87,6 +88,16 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
     initialPrice: '',
     general: ''
   });
+  const [walletError, setWalletError] = useState<string>('');
+
+  const handleOpenModal = () => {
+    if (!publicKey) {
+      setWalletError('Please connect your wallet to create a token');
+    } else {
+      setWalletError('');
+    }
+    setIsOpen(true);
+  };
 
   // Close modal when Escape key is pressed
   useEffect(() => {
@@ -110,6 +121,15 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
       document.body.style.overflow = 'auto';
     };
   }, [isOpen]);
+
+  // Watch for wallet connection changes
+  useEffect(() => {
+    if (isOpen && !publicKey) {
+      setWalletError('Please connect your wallet to create a token');
+    } else {
+      setWalletError('');
+    }
+  }, [isOpen, publicKey]);
 
   // Add polling mechanism for token processing
   useEffect(() => {
@@ -372,7 +392,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
       <button
         type="button"
         className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-        onClick={() => setIsOpen(true)}
+        onClick={handleOpenModal}
       >
         Create New Token
       </button>
@@ -442,46 +462,69 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
                     {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
                   </div>
 
+                  {/* More Options Section */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1">
-                      Initial Price (0.1 - 1 SOL)
-                      <input
-                        type="number"
-                        name="initialPrice"
-                        value={formData.initialPrice}
-                        onChange={handleInputChange}
-                        required
-                        min={0.1}
-                        max={1}
-                        step={0.1}
-                        className="w-full p-2 mt-1 bg-gray-700 rounded border border-gray-600"
-                      />
-                    </label>
-                    <small className="text-gray-400">
-                      Price must be between 0.1 and 1 SOL
-                    </small>
-                  </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreOptions(!showMoreOptions)}
+                      className="flex items-center text-sm text-gray-400 hover:text-gray-300 mb-2"
+                    >
+                      <span>More Options</span>
+                      <svg
+                        className={`w-4 h-4 ml-1 transition-transform ${showMoreOptions ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
 
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1">
-                      Price Increment (1.2x - 2.0x)
-                      <input
-                        type="number"
-                        min={1.2}
-                        max={2.0}
-                        step={0.1}
-                        value={formData.priceIncrement / 10000}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          priceIncrement: Math.floor(Number(e.target.value) * 10000)
-                        })}
-                        className="w-full p-2 mt-1 bg-gray-700 rounded border border-gray-600"
-                        required
-                      />
-                    </label>
-                    <small className="text-gray-400">
-                      Each steal will increase the price by this multiplier
-                    </small>
+                    {showMoreOptions && (
+                      <div className="space-y-4 pl-4 border-l-2 border-gray-700">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Initial Price (0.1 - 1 SOL)
+                            <input
+                              type="number"
+                              name="initialPrice"
+                              value={formData.initialPrice}
+                              onChange={handleInputChange}
+                              required
+                              min={0.1}
+                              max={1}
+                              step={0.1}
+                              className="w-full p-2 mt-1 bg-gray-700 rounded border border-gray-600"
+                            />
+                          </label>
+                          <small className="text-gray-400">
+                            Price must be between 0.1 and 1 SOL
+                          </small>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Price Increment (1.2x - 2.0x)
+                            <input
+                              type="number"
+                              min={1.2}
+                              max={2.0}
+                              step={0.1}
+                              value={formData.priceIncrement / 10000}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                priceIncrement: Math.floor(Number(e.target.value) * 10000)
+                              })}
+                              className="w-full p-2 mt-1 bg-gray-700 rounded border border-gray-600"
+                              required
+                            />
+                          </label>
+                          <small className="text-gray-400">
+                            Each steal will increase the price by this multiplier
+                          </small>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mb-4">
@@ -494,6 +537,12 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
                   {errors.general && (
                     <div className="mb-4 p-3 bg-red-900 bg-opacity-50 rounded">
                       <p className="text-red-300 text-sm">{errors.general}</p>
+                    </div>
+                  )}
+
+                  {walletError && (
+                    <div className="mb-4 p-3 bg-red-900 bg-opacity-50 rounded">
+                      <p className="text-red-300 text-sm">{walletError}</p>
                     </div>
                   )}
 

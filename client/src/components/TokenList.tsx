@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SortTokens, SortOption } from './SortTokens';
 import { useQuery } from '@apollo/client';
-import { GET_TOKEN_PAGE } from '../graphql/queries';
+import { GET_TOKEN_PAGE, GET_SORT_OPTIONS } from '../graphql/queries';
 import { useNavigate } from 'react-router-dom';
 
 const formatDate = (dateString: string) => {
@@ -41,19 +41,59 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('price-desc');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchTerm, setActiveSearchTerm] = useState('');
   
+  // Query to get available sort options
+  const { data: sortOptionsData } = useQuery(GET_SORT_OPTIONS);
+
   // GraphQL query for paginated tokens
   const { loading, error: graphqlError, data, refetch } = useQuery(GET_TOKEN_PAGE, {
     variables: { 
       page: currentPage,
-      sortBy: sortBy === 'price-desc' ? 'PRICE_DESC' : 'PRICE_ASC'
+      sortBy: sortBy === 'price-desc' ? 'PRICE_DESC' : 
+              sortBy === 'price-asc' ? 'PRICE_ASC' :
+              sortBy === 'latest-buy' ? 'LATEST_PURCHASE' :
+              sortBy === 'creation-date' ? 'CREATION_DATE' : 'PRICE_DESC',
+      search: activeSearchTerm || undefined
     },
     fetchPolicy: 'cache-and-network',
+    onError: (error) => {
+      console.error('GraphQL error details:', error);
+      if (sortOptionsData?.__type?.enumValues) {
+        console.log('Available sort options:', sortOptionsData.__type.enumValues.map((v: any) => v.name).join(', '));
+      }
+    }
   });
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await refetch({
+        page: currentPage,
+        sortBy: sortBy === 'price-desc' ? 'PRICE_DESC' : 
+                sortBy === 'price-asc' ? 'PRICE_ASC' :
+                sortBy === 'latest-buy' ? 'LATEST_PURCHASE' :
+                sortBy === 'creation-date' ? 'CREATION_DATE' : 'PRICE_DESC',
+        search: activeSearchTerm || undefined
+      });
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div></div>;
 
   const handleSortChange = (newSort: SortOption) => {
     setSortBy(newSort);
-    setCurrentPage(1); // Reset to first page when changing sort
+    setCurrentPage(1);
+  };
+
+  const handleSearch = () => {
+    setActiveSearchTerm(searchQuery);
+    setCurrentPage(1);
   };
 
   const handleNextPage = () => {
@@ -84,29 +124,48 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
 
   return (
     <div className="p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Available Tokens</h1>
-        <div className="flex gap-4 items-center">
-          <SortTokens sortBy={sortBy} onChange={handleSortChange} />
-          <button
-            onClick={() => {
-              setRefreshing(true);
-              refetch().finally(() => setRefreshing(false));
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Available Tokens</h1>
+          <div className="flex gap-4 items-center">
+            <SortTokens sortBy={sortBy} onChange={handleSortChange} />
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-purple-400"
+              disabled={refreshing || loading}
+            >
+              {(refreshing || loading) ? (
+                <div className="flex items-center">
+                  <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Refreshing...
+                </div>
+              ) : (
+                'Refresh'
+              )}
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Search by token name or symbol..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSearch();
+              }
             }}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-purple-400"
-            disabled={refreshing || loading}
+            className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-purple-500 placeholder-gray-400"
+          />
+          <button
+            onClick={handleSearch}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors"
           >
-            {(refreshing || loading) ? (
-              <div className="flex items-center">
-                <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Refreshing...
-              </div>
-            ) : (
-              'Refresh'
-            )}
+            Search
           </button>
         </div>
       </div>
@@ -114,7 +173,9 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
       {graphqlError && <div className="text-red-500 mb-4">Error: {graphqlError.message}</div>}
 
       {tokens.length === 0 && !loading ? (
-        <div className="text-center py-8">No tokens found</div>
+        <div className="text-center py-8">
+          {activeSearchTerm ? 'No tokens found matching your search' : 'No tokens found'}
+        </div>
       ) : (
         <>
           <div className="max-w-7xl mx-auto">
