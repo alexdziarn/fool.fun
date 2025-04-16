@@ -40,7 +40,7 @@ export const TokenList = ({ onViewToken }: TokenListProps = {}) => {
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<SortOption>('price-desc');
+  const [sortBy, setSortBy] = useState<SortOption>('latest-buy');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchTerm, setActiveSearchTerm] = useState('');
   

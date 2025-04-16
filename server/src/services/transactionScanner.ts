@@ -7,7 +7,7 @@ import { calculateAmountFromInnerInstructions, getTransactionToFromNew, getTrans
 import { getData, getSingleTokenDataFromBlockchain } from '../db/populate-tokens';
 import { queueEmail } from './emailQueueService';
 
-const MAX_CONCURRENT_BLOCKS = 5; // Number of blocks to process in parallel
+const MAX_CONCURRENT_BLOCKS = 10; // Number of blocks to process in parallel
 
 /**
  * Continuously scans blocks for program transactions
@@ -138,11 +138,11 @@ export async function scanBlocks(
       const newSlot = slotInfo.slot;
       queue.push(newSlot);
       
-      if (queue.length >= 5) {
+      if (queue.length >= MAX_CONCURRENT_BLOCKS) {
         console.log(`Processing blocks ${queue[0]} to ${queue[4]}`);
         
         // Process blocks in parallel but track failures
-        const blockPromises = queue.splice(0, 5).sort((a, b) => a - b).map(async (blockNumber) => {
+        const blockPromises = queue.splice(0, MAX_CONCURRENT_BLOCKS).sort((a, b) => a - b).map(async (blockNumber) => {
           try {
             await processBlock(blockNumber);
           } catch (error) {

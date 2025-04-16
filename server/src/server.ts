@@ -128,17 +128,17 @@ const resolvers = {
   Upload: GraphQLUpload,
   Query: {
     hello: () => 'Hello World!',
-    getTokenPage: async (_: unknown, { page = 1, pageSize = 12, sortBy, search }: { page: string | number, pageSize: string | number, sortBy?: 'PRICE_ASC' | 'PRICE_DESC' | 'LATEST_PURCHASE' | 'CREATION_DATE', search?: string }) => {
+    getTokenPage: async (_: unknown, { page = 1, pageSize = 12, sortBy = 'LATEST_PURCHASE', search }: { page: string | number, pageSize: string | number, sortBy?: 'PRICE_ASC' | 'PRICE_DESC' | 'LATEST_PURCHASE' | 'CREATION_DATE', search?: string }) => {
       try {
         const pageSizeNum = Number(pageSize);
         const pageNum = Number(page);
         const offsetNum = (pageNum - 1) * pageSizeNum;
         
-        let orderBy = 'current_price DESC';
+        let orderBy = '(SELECT MAX(timestamp) FROM transactions WHERE token_id = t.id AND type = \'steal\') DESC NULLS LAST';
         if (sortBy === 'PRICE_ASC') {
           orderBy = 'current_price ASC';
-        } else if (sortBy === 'LATEST_PURCHASE') {
-          orderBy = '(SELECT MAX(timestamp) FROM transactions WHERE token_id = t.id AND type = \'steal\') DESC NULLS LAST';
+        } else if (sortBy === 'PRICE_DESC') {
+          orderBy = 'current_price DESC';
         } else if (sortBy === 'CREATION_DATE') {
           orderBy = '(SELECT timestamp FROM transactions WHERE token_id = t.id AND type = \'create\' LIMIT 1) DESC NULLS LAST';
         }
