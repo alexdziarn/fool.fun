@@ -26,7 +26,6 @@ export const ProfilePage = () => {
   const navigate = useNavigate();
   const { publicKey } = useWallet();
   const [selectedToken, setSelectedToken] = useState<any>(null);
-  const [sortBy, setSortBy] = useState<SortOption>('price-desc');
   const [isCurrentUser, setIsCurrentUser] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('owned');
 
@@ -50,20 +49,7 @@ export const ProfilePage = () => {
   }, [publicKey, walletAddress]);
 
   const sortTokens = (tokensToSort: OwnedToken[]) => {
-    return [...tokensToSort].sort((a, b) => {
-      switch (sortBy) {
-        case 'price-asc':
-          return a.currentPrice - b.currentPrice;
-        case 'price-desc':
-          return b.currentPrice - a.currentPrice;
-        case 'latest-buy':
-          return 0; // We'll implement this later
-        case 'creation-date':
-          return 0; // We'll implement this later
-        default:
-          return 0;
-      }
-    });
+    return [...tokensToSort].sort((a, b) => b.currentPrice - a.currentPrice);
   };
   
   const handleViewToken = (tokenId: string) => {
@@ -133,11 +119,6 @@ export const ProfilePage = () => {
             Minted Tokens ({mintedTokens.length})
           </button>
         </nav>
-      </div>
-
-      {/* Sort Options */}
-      <div className="mb-6">
-        <SortTokens sortBy={sortBy} onChange={setSortBy} />
       </div>
 
       {/* Token Grid */}

@@ -139,7 +139,7 @@ export async function scanBlocks(
       queue.push(newSlot);
       
       if (queue.length >= MAX_CONCURRENT_BLOCKS) {
-        console.log(`Processing blocks ${queue[0]} to ${queue[4]}`);
+        console.log(`Processing blocks ${queue[0]} to ${queue[MAX_CONCURRENT_BLOCKS - 1]}`);
         
         // Process blocks in parallel but track failures
         const blockPromises = queue.splice(0, MAX_CONCURRENT_BLOCKS).sort((a, b) => a - b).map(async (blockNumber) => {

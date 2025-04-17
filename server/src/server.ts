@@ -370,6 +370,7 @@ const resolvers = {
 
   Mutation: {
     uploadFile: async (_: any, { file }: { file: Promise<FileUpload> }) => {
+      // DEPRECATED: use uploadFileToTempGroup instead
       console.log('uploadFile', file);
       try {
         const { createReadStream, filename, mimetype } = await file;

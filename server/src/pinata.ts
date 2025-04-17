@@ -86,3 +86,13 @@ export async function deleteOldFilesFromTempGroup() {
     throw new Error('Failed to delete old files from temp group');
   }
 }
+
+export const checkFileInGroup = async (fileCid: string, groupId: string): Promise<boolean> => {
+  try {
+    const filesInGroup = await pinata.files.public.list().group(groupId);
+    return filesInGroup.files.some(file => file.cid === fileCid);
+  } catch (error) {
+    console.error('Error checking file in group:', error);
+    return false;
+  }
+};
