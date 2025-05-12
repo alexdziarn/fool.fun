@@ -24,34 +24,34 @@ COPY --from=builder /kubo/cmd/ipfs/ipfs /usr/local/bin/ipfs
 
 # Create IPFS directories and set permissions
 RUN mkdir -p /data/ipfs && \
-    chown -R ipfs:ipfs /data/ipfs
+    chown -R ipfs:ipfs /data/ipfs && \
+    chmod 700 /data/ipfs
+
+# Set environment variables
+ENV IPFS_PATH=/data/ipfs
 
 # Switch to non-root user
 USER ipfs
 
 # Initialize IPFS with default configuration
-RUN ipfs init --profile=server
-
-# Configure IPFS for server usage
-RUN ipfs config Addresses.API "/ip4/0.0.0.0/tcp/5001" && \
+RUN ipfs init --profile=server && \
+    # Configure IPFS for server usage
+    ipfs config Addresses.API "/ip4/0.0.0.0/tcp/5001" && \
     ipfs config Addresses.Gateway "/ip4/0.0.0.0/tcp/8080" && \
-    ipfs config --json Swarm.EnableAutoNAT true && \
-    ipfs config --json Swarm.EnableRelayHop true && \
-    ipfs config --json Swarm.EnableAutoRelay true && \
     # Set storage limits to 10GB
-    ipfs config --json Datastore.StorageMax "10GB" && \
+    ipfs config --json Datastore.StorageMax "\"10GB\"" && \
     # Set GC watermark to 90% of storage max
-    ipfs config --json Datastore.GCPeriod "1h" && \
-    ipfs config --json Datastore.StorageGCWatermark 90
+    ipfs config --json Datastore.GCPeriod "\"1h\"" && \
+    ipfs config --json Datastore.StorageGCWatermark 90 && \
+    # Enable basic features
+    ipfs config --json Swarm.RelayClient.Enabled true && \
+    ipfs config --json Swarm.RelayService.Enabled true
 
 # Expose IPFS ports
 # 4001: Swarm
 # 5001: API
 # 8080: Gateway
 EXPOSE 4001/tcp 5001/tcp 8080/tcp
-
-# Set environment variables
-ENV IPFS_PATH=/data/ipfs
 
 # Use tini as init system
 ENTRYPOINT ["/sbin/tini", "--"]
