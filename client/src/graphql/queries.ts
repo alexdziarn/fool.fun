@@ -60,6 +60,14 @@ export const UPLOAD_FILE_TO_GROUP = gql`
   }
 `;
 
+export const UPLOAD_FILE_TO_IPFS = gql`
+  mutation UploadFileToIpfs($file: Upload!) {
+    uploadFileToIpfs(file: $file) {
+      url
+    }
+  }
+`;
+
 export const GET_TOKENS_BY_HOLDER = gql`
   query GetTokensByHolder($address: String!) {
     getTokensByHolder(address: $address) {
@@ -103,4 +111,4 @@ export const GET_SORT_OPTIONS = gql`
       }
     }
   }
-`; 
+`;

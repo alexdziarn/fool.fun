@@ -66,6 +66,7 @@
     "iconv-lite": "^0.4.24",
     "inherits": "^2.0.4",
     "ipaddr.js": "^1.9.1",
+    "ipfs-http-client": "^60.0.1",
     "lodash.sortby": "^4.7.0",
     "loglevel": "^1.9.2",
     "long": "^4.0.0",

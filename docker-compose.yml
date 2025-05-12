@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # # Backend server
   # server:
@@ -76,6 +74,26 @@ services:
       timeout: 10s
       retries: 5
 
+  ipfs:
+    build:
+      context: .
+      dockerfile: ipfs.dockerfile
+    container_name: ipfs-node
+    ports:
+      - "4001:4001"  # Swarm
+      - "5001:5001"  # API
+      - "8080:8080"  # Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+    restart: unless-stopped
+    networks:
+      - foolfun_network
+
 volumes:
   postgres_data:
   rabbitmq_data:
+  ipfs_data:
+
+networks:
+  foolfun_network:
+    driver: bridge

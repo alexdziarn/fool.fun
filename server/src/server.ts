@@ -12,7 +12,7 @@ import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 import { PublicKey, Connection, clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import { uploadToPinata, uploadToPinataGroup } from './pinata';
+import { uploadToTempGroup } from './pinata';
 import { PROGRAM_ID } from './constants';
 import { fetchTransactionHistoryByTokenId } from './db/populate-transactions';
 import * as dotenv from 'dotenv';
@@ -20,6 +20,7 @@ import { insertToken } from './db/tokens';
 import { getPool } from './db/pool';
 import { Token } from './types';
 import { insertTransaction } from './db/transactions';
+import { create } from 'ipfs-http-client';
 
 dotenv.config();
 
@@ -28,6 +29,13 @@ dotenv.config();
 
 // Configure PostgreSQL connection
 const pool = getPool();
+
+// Configure IPFS client
+const ipfs = create({
+  host: 'ipfs',  // Use the service name from docker-compose
+  port: 5001,
+  protocol: 'http'  // Use http since we're connecting within the docker network
+});
 
 // Define TypeDefs
 const typeDefs = `#graphql
@@ -105,13 +113,13 @@ const typeDefs = `#graphql
   }
 
   type Mutation {
-    uploadFile(file: Upload!): File!
     uploadFileToTempGroup(file: Upload!): File!
     verifySignature(
       publicKey: String!
       signature: String!
       message: String!
     ): AuthResponse!
+    uploadFileToIpfs(file: Upload!): File!
   }
 `;
 
@@ -369,9 +377,7 @@ const resolvers = {
   },
 
   Mutation: {
-    uploadFile: async (_: any, { file }: { file: Promise<FileUpload> }) => {
-      // DEPRECATED: use uploadFileToTempGroup instead
-      console.log('uploadFile', file);
+    uploadFileToIpfs: async (_: any, { file }: { file: Promise<FileUpload> }) => {
       try {
         const { createReadStream, filename, mimetype } = await file;
         
@@ -390,14 +396,24 @@ const resolvers = {
         }
         const buffer = Buffer.concat(chunks);
 
-        // Upload to Pinata
-        console.log('Uploading file to Pinata...');
-        const url = await uploadToPinata(buffer, filename);
-        console.log('File uploaded successfully to IPFS:', url);
+        // Upload to local IPFS node
+        console.log('Uploading file to local IPFS node...');
+        const result = await ipfs.add(buffer, {
+          pin: true,
+          wrapWithDirectory: false
+        });
 
-        return { url };
+        if (!result.cid) {
+          throw new Error('Failed to get CID from IPFS upload');
+        }
+
+        // Construct IPFS URL using our local gateway
+        const ipfsUrl = `http://localhost:8080/ipfs/${result.cid}`;
+        console.log('File uploaded successfully to IPFS:', ipfsUrl);
+
+        return { url: ipfsUrl };
       } catch (error) {
-        console.error('Upload error:', error);
+        console.error('File upload failed', error);
         throw new GraphQLError('File upload failed', {
           extensions: { code: 'INTERNAL_SERVER_ERROR' }
         });
@@ -425,7 +441,7 @@ const resolvers = {
 
         // Upload to Pinata group
         console.log('Uploading file to Pinata group...');
-        const url = await uploadToPinataGroup(buffer, filename, process.env.PINATA_TEMP_GROUP_ID || '');
+        const url = await uploadToTempGroup(buffer, filename);
         console.log('File uploaded successfully to IPFS group:', url);
 
         return { url };

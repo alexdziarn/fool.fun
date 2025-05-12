@@ -3,7 +3,7 @@ import amqp from 'amqplib';
 import { DBTransaction, DBTransactionType } from '../types';
 import { insertToken, updateToken, updateTokenHolder } from '../db/tokens';
 import { insertTransaction } from '../db/transactions';
-import { moveFileFromTempToActiveGroup } from '../pinata';
+import { moveFileFromTempToActiveGroup, pinFile } from '../pinata';
 
 const queue = 'transaction_queue';
 let connection: any = null;
@@ -67,7 +67,7 @@ async function consumeMessages() {
                             const imageCid = imageUrl.split('/').pop();
                             console.log('Image CID:', imageCid);
                             if (imageCid) {
-                                await moveFileFromTempToActiveGroup(imageCid);
+                                await pinFile(imageCid);
                             } else {
                                 console.error('Image CID not found');
                             }

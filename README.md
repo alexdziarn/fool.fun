@@ -3,9 +3,8 @@ creating a new token standard revolved around the greater fools theory
 
 
 TODO:
+invalidate image the frontend after 5 min, then delete the image from pinata after 6 min
 create better ui
-token search and filtering
-increase scanner batching to 10 from 5
 dockerize
 build on cloud
 marketing/release

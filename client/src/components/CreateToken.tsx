@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { gql } from '@apollo/client';
 import { useMutation } from '@apollo/client';
 import FileUpload from './FileUpload';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -14,14 +13,7 @@ import {
 } from '@solana/web3.js';
 import { PROGRAM_ID, DEV_WALLET } from '../config/constants';
 import { useNavigate } from 'react-router-dom';
-
-const UPLOAD_FILE_TO_TEMP_GROUP = gql`
-  mutation UploadFileToTempGroup($file: Upload!) {
-    uploadFileToTempGroup(file: $file) {
-      url
-    }
-  }
-`;
+import { UPLOAD_FILE_TO_IPFS } from '../graphql/queries';
 
 interface CreateTokenForm {
   name: string;
@@ -65,7 +57,7 @@ interface CreateTokenProps {
 const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
   const navigate = useNavigate();
   const { publicKey, sendTransaction } = useWallet();
-  const [uploadFileToTempGroup] = useMutation(UPLOAD_FILE_TO_TEMP_GROUP);
+  const [uploadFileToIpfs] = useMutation(UPLOAD_FILE_TO_IPFS);
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessingModalOpen, setIsProcessingModalOpen] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
@@ -244,7 +236,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
     try {
       // First upload image to temp group
       console.log('Uploading file to temp group...');
-      const { data } = await uploadFileToTempGroup({
+      const { data } = await uploadFileToIpfs({
         variables: { 
           file: fileToUpload,
         },
@@ -255,11 +247,11 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
         }
       });
 
-      if (!data?.uploadFileToTempGroup?.url) {
+      if (!data?.uploadFileToIpfs?.url) {
         throw new Error('Failed to upload image');
       }
 
-      console.log('Upload successful:', data.uploadFileToTempGroup.url);
+      console.log('Upload successful:', data.uploadFileToIpfs.url);
 
       console.log('Creating token...');
 
