@@ -87,6 +87,7 @@ export async function scanBlocks(
 
             token = tokenData;
             amount = calculatedAmount;
+            console.log("token from scanner", token);
 
             // start creating a new transaction object
             const transaction: DBTransaction = {

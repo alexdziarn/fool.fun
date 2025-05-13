@@ -1,5 +1,6 @@
 import { PinataSDK } from 'pinata';
 import * as dotenv from "dotenv";
+import { ipfs } from './ipfs';
 
 dotenv.config();
 
@@ -81,7 +82,19 @@ export const checkFileInGroup = async (fileCid: string, groupId: string): Promis
 
 export const pinFile = async (fileCid: string) => {
   try {
-    await pinata.upload.public.cid(fileCid);
+    let content = new Uint8Array(0);
+    for await (const chunk of ipfs.cat(fileCid)) {
+      const newContent = new Uint8Array(content.length + chunk.length);
+      newContent.set(content);
+      newContent.set(chunk, content.length);
+      content = newContent;
+    }
+
+    // upload to pinata
+    const file = bufferToFile(Buffer.from(content), fileCid); //filecid is the cid of the local ipfs node
+    const result = await pinata.upload.public.file(file);
+    console.log(`https://${PINATA_GATEWAY}/ipfs/${result.cid}`);
+    return `https://${PINATA_GATEWAY}/ipfs/${result.cid}`;
   } catch (error) {
     console.error('Error pinning file:', error);
     throw new Error('Failed to pin file');

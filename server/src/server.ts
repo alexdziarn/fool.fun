@@ -25,9 +25,9 @@ import { createHeliaHTTP } from '@helia/http'
 import { unixfs } from '@helia/unixfs';
 import { FsBlockstore } from 'blockstore-fs';
 import type { Helia } from 'helia'
-import type { CID } from 'multiformats/cid'
 import { create } from 'ipfs-http-client'
-
+import { multiaddr } from '@multiformats/multiaddr'
+import { ipfs, addWithCIDv1 } from './ipfs';
 dotenv.config();
 
 // const firebaseApp = initializeApp(firebaseConfig);
@@ -395,23 +395,19 @@ const resolvers = {
           chunks.push(chunk as Buffer);
         }
         const buffer = Buffer.concat(chunks);
-
-        // Create IPFS client
-        const ipfs = create({ url: 'http://localhost:5001/api/v0' });
           
         console.log('Uploading file to IPFS node...');
-        const result = await ipfs.add(buffer);
-        const cid = result.cid;
+        const cid = await addWithCIDv1(buffer);
 
         if (!cid) {
           throw new Error('Failed to get CID from IPFS upload');
         }
 
         // Construct IPFS URL using our local gateway
-        const ipfsUrl = `http://localhost:8080/ipfs/${cid.toString()}`; // TODO: have this dynamically change based on the environment
+        const ipfsUrl = `http://localhost:8080/ipfs/${cid}`; // TODO: have this dynamically change based on the environment
         console.log('File uploaded successfully to IPFS:', ipfsUrl);
 
-        return { cid: cid.toString() };
+        return { cid };
       } catch (error) {
         console.error('File upload failed', error);
         throw new GraphQLError('File upload failed', {

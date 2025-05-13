@@ -63,11 +63,10 @@ async function consumeMessages() {
                     if (transaction.token) {
                         try {
                             await insertToken(transaction.token);
-                            const imageUrl = transaction.token.image;
-                            const imageCid = imageUrl.split('/').pop();
-                            console.log('Image CID:', imageCid);
-                            if (imageCid) {
-                                await pinFile(imageCid);
+                            const cid = transaction.token.image;
+                            console.log('Image CID:', cid);
+                            if (cid) {
+                                await pinFile(cid);
                             } else {
                                 console.error('Image CID not found');
                             }
