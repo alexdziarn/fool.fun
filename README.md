@@ -3,7 +3,6 @@ creating a new token standard revolved around the greater fools theory
 
 
 TODO:
-I changed url variable to cid, the compounding issue
 expore websockets for getting token data on homepage, at token page, and after creating a token
 configure on-premise server to host ipfs node and solana rpc node
 cleanup deprecated fucntion, unused packages, console logs
