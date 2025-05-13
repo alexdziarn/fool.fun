@@ -63,7 +63,7 @@ export const UPLOAD_FILE_TO_GROUP = gql`
 export const UPLOAD_FILE_TO_IPFS = gql`
   mutation UploadFileToIpfs($file: Upload!) {
     uploadFileToIpfs(file: $file) {
-      url
+      cid
     }
   }
 `;

@@ -3,10 +3,12 @@ creating a new token standard revolved around the greater fools theory
 
 
 TODO:
-invalidate image the frontend after 5 min, then delete the image from pinata after 6 min
+expore websockets for getting token data on homepage, at token page, and after creating a token
+configure on-premise server to host ipfs node and solana rpc node
+cleanup deprecated fucntion, unused packages, console logs
+dynamic environment variables
+logging system
 create better ui
 dockerize
-build on cloud
 marketing/release
-update env variables for prod
 implement smtp email server

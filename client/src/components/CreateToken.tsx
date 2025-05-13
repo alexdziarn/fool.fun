@@ -237,7 +237,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
       // First upload image to temp group
       console.log('Uploading file to temp group...');
       const { data } = await uploadFileToIpfs({
-        variables: { 
+        variables: {
           file: fileToUpload,
         },
         context: {
@@ -246,12 +246,12 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
           }
         }
       });
-
-      if (!data?.uploadFileToIpfs?.url) {
+      console.log("data", data);
+      if (!data?.uploadFileToIpfs?.cid) {
         throw new Error('Failed to upload image');
       }
 
-      console.log('Upload successful:', data.uploadFileToIpfs.url);
+      console.log('Upload successful:', data.uploadFileToIpfs.cid);
 
       console.log('Creating token...');
 
@@ -292,7 +292,7 @@ const CreateToken: React.FC<CreateTokenProps> = ({ onSuccess }) => {
           ...serializeString(formData.name),
           ...serializeString(formData.ticker),
           ...serializeString(formData.description),
-          ...serializeString(data.uploadFileToTempGroup.url || ''),
+          ...serializeString(data.uploadFileToIpfs.cid || ''),
           ...serializeU64(BigInt(Math.floor(formData.initialPrice * LAMPORTS_PER_SOL))),
           ...serializeU64(BigInt(formData.priceIncrement)),
           ...Buffer.from([bump]),  // Use the actual bump

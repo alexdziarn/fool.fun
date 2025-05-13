@@ -20,7 +20,13 @@ import { insertToken } from './db/tokens';
 import { getPool } from './db/pool';
 import { Token } from './types';
 import { insertTransaction } from './db/transactions';
-import { create } from 'ipfs-http-client';
+import { createHelia } from 'helia'
+import { createHeliaHTTP } from '@helia/http'
+import { unixfs } from '@helia/unixfs';
+import { FsBlockstore } from 'blockstore-fs';
+import type { Helia } from 'helia'
+import type { CID } from 'multiformats/cid'
+import { create } from 'ipfs-http-client'
 
 dotenv.config();
 
@@ -30,19 +36,13 @@ dotenv.config();
 // Configure PostgreSQL connection
 const pool = getPool();
 
-// Configure IPFS client
-const ipfs = create({
-  host: 'ipfs',  // Use the service name from docker-compose
-  port: 5001,
-  protocol: 'http'  // Use http since we're connecting within the docker network
-});
 
 // Define TypeDefs
 const typeDefs = `#graphql
   scalar Upload
 
   type File {
-    url: String!
+    cid: String!
   }
 
   type Token {
@@ -396,22 +396,22 @@ const resolvers = {
         }
         const buffer = Buffer.concat(chunks);
 
-        // Upload to local IPFS node
-        console.log('Uploading file to local IPFS node...');
-        const result = await ipfs.add(buffer, {
-          pin: true,
-          wrapWithDirectory: false
-        });
+        // Create IPFS client
+        const ipfs = create({ url: 'http://localhost:5001/api/v0' });
+          
+        console.log('Uploading file to IPFS node...');
+        const result = await ipfs.add(buffer);
+        const cid = result.cid;
 
-        if (!result.cid) {
+        if (!cid) {
           throw new Error('Failed to get CID from IPFS upload');
         }
 
         // Construct IPFS URL using our local gateway
-        const ipfsUrl = `http://localhost:8080/ipfs/${result.cid}`;
+        const ipfsUrl = `http://localhost:8080/ipfs/${cid.toString()}`; // TODO: have this dynamically change based on the environment
         console.log('File uploaded successfully to IPFS:', ipfsUrl);
 
-        return { url: ipfsUrl };
+        return { cid: cid.toString() };
       } catch (error) {
         console.error('File upload failed', error);
         throw new GraphQLError('File upload failed', {
@@ -419,6 +419,9 @@ const resolvers = {
         });
       }
     },
+
+    // TODO: Remove this once we have local IPFS implmentation.
+    // will pin file after it is confirmed on blockchain and scanned by the scanner.
     uploadFileToTempGroup: async (_: any, { file }: { file: Promise<FileUpload> }) => {
       console.log('uploadFileToTempGroup', file);
       try {
