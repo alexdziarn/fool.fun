@@ -196,6 +196,13 @@ const resolvers = {
           if (row.lastCreate) {
             row.lastCreate = new Date(row.lastCreate).toISOString();
           }
+          // if image already starts with https, do nothing
+          // just a quick fix for dev, remove later
+          if (row.image.startsWith('https://')) {
+            return;
+          }
+
+          row.image = `https://${process.env.PINATA_GATEWAY}/ipfs/${row.image}`;
         });
 
         return {
@@ -205,7 +212,9 @@ const resolvers = {
         };
       } catch (error) {
         console.error('Error fetching token page:', error);
-        throw new Error('Failed to fetch tokens');
+        throw new GraphQLError('Failed to fetch tokens', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
       }
     },
     getTokenById: async (_: any, { id }: { id: string }) => {
@@ -243,10 +252,7 @@ const resolvers = {
               amount,
               timestamp,
               block_number as "blockNumber",
-              slot,
-              fee,
-              success,
-              created_at as "createdAt"
+              success
             FROM transactions
             WHERE token_id = $1 AND success = true
             ORDER BY timestamp DESC
@@ -273,6 +279,10 @@ const resolvers = {
         // If token not found, return null
         if (!token) {
           return null;
+        }
+        
+        if (!token.image.startsWith('https://')) {
+          token.image = `https://${process.env.PINATA_GATEWAY}/ipfs/${token.image}`;
         }
         
         const transactions = transactionsResult.rows;
